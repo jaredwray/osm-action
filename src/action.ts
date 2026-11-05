@@ -4,7 +4,8 @@ import { GitHub } from './source.ts';
 import { OSM } from './osm.ts';
 import { scan, defaultPolicy } from './scan.ts';
 import { annotations, commandData, exitCode, summary } from './report.ts';
-import { safeErrorMessage, ScanError, SHA } from './model.ts';
+import { IssueSync, issueSkipReason } from './issues.ts';
+import { repository, safeErrorMessage, ScanError, SHA } from './model.ts';
 function input(name: string) { return process.env[`INPUT_${name.toUpperCase()}`] ?? ''; }
 function boolean(name: string, fallback: boolean) {
   const value = input(name);
@@ -22,6 +23,7 @@ async function main() {
   const output = process.env.GITHUB_OUTPUT;
   const stepSummary = process.env.GITHUB_STEP_SUMMARY;
   if (!temp || !output || !stepSummary) throw new ScanError('Missing Actions runtime paths; run this inside GitHub Actions');
+  const createIssues = boolean('create-issues', false);
   const github = new GitHub(input('github-token'));
   const osm = new OSM(token);
   const source = (await github.resolve(repo, sha)).source;
@@ -34,6 +36,26 @@ async function main() {
   await appendFile(output, `result=${report.result}\ncomplete=${report.complete}\nreport-path=${reportPath}\nchecked-repositories=${report.coverage.checkedRepositories}\n`);
   for (const annotation of annotations(report)) console.log(annotation);
   process.exitCode = exitCode(report);
+  if (createIssues) await reportIssues(report, repo, output);
+}
+/** Mirrors the report into GitHub Issues. Failure fails the job but never changes the scan result. */
+async function reportIssues(report: Awaited<ReturnType<typeof scan>>, scanned: string, output: string) {
+  try {
+    const own = process.env.GITHUB_REPOSITORY ?? '';
+    const sync = new IssueSync(input('github-token'), own || scanned);
+    const skip = await issueSkipReason({ event: process.env.GITHUB_EVENT_NAME, repository: own, ref: process.env.GITHUB_REF },
+      scanned, () => sync.defaultBranch());
+    if (skip) { console.log(`::notice::${commandData(`${skip}; no issues were changed.`)}`); return; }
+    const runId = process.env.GITHUB_RUN_ID ?? '';
+    const outcome = await sync.sync(report, { repository: own,
+      ...(/^\d+$/.test(runId) ? { runUrl: `https://github.com/${repository(own)}/actions/runs/${runId}` } : {}) });
+    await appendFile(output, `dashboard-issue=${outcome.dashboard}\n`);
+    console.log(`OSM Actions Dashboard: ${outcome.dashboard}`);
+  } catch (error) {
+    const reason = safeErrorMessage(error) ?? 'unexpected error';
+    console.log(`::error::${commandData(`Issue reporting failed: ${reason}. The workflow needs "permissions: issues: write". The scan result is unchanged.`)}`);
+    if (!process.exitCode) process.exitCode = 2;
+  }
 }
 main().catch(error => {
   // Only fixed project messages are shown; upstream bodies, paths, and credentials are never echoed.

@@ -1,0 +1,31 @@
+# TEMPLATE: replace PINNED_OSM_ACTION_COMMIT with a reviewed full commit SHA.
+# Maintains an "OSM Actions Dashboard" issue listing every GitHub Action this
+# repository uses, and opens one issue per action that OpenSourceMalware flags.
+# Issues are only written on the default branch for push, schedule, and
+# workflow_dispatch runs; other events scan without touching issues.
+name: OSM Actions dashboard
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: osm-issues
+  cancel-in-progress: false
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: jaredwray/osm-action@PINNED_OSM_ACTION_COMMIT
+        with:
+          osm-token: ${{ secrets.OSM_API_TOKEN }}
+          repository: ${{ github.repository }}
+          sha: ${{ github.sha }}
+          create-issues: true

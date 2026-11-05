@@ -7,33 +7,41 @@ const MAX_RETRY_DELAY = 60_000;
 const services: Record<string, string> = { 'api.github.com': 'GitHub', 'api.opensourcemalware.com': 'OpenSourceMalware' };
 const statusHints: Record<number, string> = { 401: 'credentials were rejected', 403: 'access denied',
   404: 'not found or not accessible with the supplied token' };
+/** A JSON write to the GitHub API. */
+export interface Write { method: 'POST' | 'PATCH'; body: unknown }
 export class Http {
   constructor(private readonly fetcher: Fetch = globalThis.fetch,
     private readonly pause: Sleep = sleep) {}
 
-  async json(url: URL, token: string, limit = 2_000_000): Promise<unknown> {
+  async json(url: URL, token: string, limit = 2_000_000, write?: Write): Promise<unknown> {
     const service = services[url.hostname];
-    if (url.protocol !== 'https:' || !service || url.username || url.password || url.port) {
+    if (url.protocol !== 'https:' || !service || url.username || url.password || url.port ||
+        (write && service !== 'GitHub')) {
       throw new ScanError('Disallowed API destination');
     }
+    // A POST that failed in transit or with 5xx may still have been applied, so only
+    // throttled POSTs (rejected before processing) are retried.
+    const replayable = write?.method !== 'POST';
     for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
       const final = attempt === ATTEMPTS - 1;
       const backoff = 1000 * 2 ** attempt;
       let response: Response;
       try {
         response = await this.fetcher(url, { redirect: 'error', signal: AbortSignal.timeout(20_000),
+          ...(write ? { method: write.method, body: JSON.stringify(write.body) } : {}),
           headers: { Accept: 'application/json', 'User-Agent': 'osm-action/0.1.0',
+            ...(write ? { 'Content-Type': 'application/json' } : {}),
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
             ...(url.hostname === 'api.github.com' ? { 'X-GitHub-Api-Version': '2022-11-28' } : {}) } });
       } catch {
         // Connection resets and timeouts are usually transient.
-        if (!final) { await this.pause(backoff); continue; }
+        if (!final && replayable) { await this.pause(backoff); continue; }
         throw new ScanError(`${service} API request failed or timed out (details redacted)`);
       }
       let body: string;
       try { body = await read(response, limit); } catch (error) {
         if (error instanceof ScanError) throw error;
-        if (!final) { await this.pause(backoff); continue; }
+        if (!final && replayable) { await this.pause(backoff); continue; }
         throw new ScanError(`${service} API response could not be read`);
       }
       const remaining = response.headers.get('x-ratelimit-remaining');
@@ -41,7 +49,7 @@ export class Http {
       // GitHub reports primary and secondary rate limits as 403 as well as 429.
       const githubLimited = service === 'GitHub' && response.status === 403 && (remaining === '0' || retryAfter !== null);
       const throttled = response.status === 429 || githubLimited;
-      if ((throttled || response.status >= 500) && !final) {
+      if ((throttled || (response.status >= 500 && replayable)) && !final) {
         if (response.status === 429 && /daily|24 hours|24-hour/i.test(body)) {
           throw new ScanError(`${service} API daily quota exhausted`, 429);
         }
