@@ -7,11 +7,11 @@ Profile: website/app · public
 `package.json` is `"private": true`. This repository ships a GitHub Action and is not published to npm, so § 5 is omitted. Safe Chain, Codex cloud, and Claude Code environment items are omitted because there is no `pnpm-lock.yaml`. The Dev Container image pin is omitted because there is no `devcontainer.json`.
 
 ## 1. Security docs
-- [ ] `SECURITY.md` present — contact info + "How this repository is secured" summary (PR #8 pending)
-- [ ] `DEFENSE_IN_DEPTH.md` present (this file) (PR #8 pending)
+- [x] `SECURITY.md` present — contact info + "How this repository is secured" summary — PR #8
+- [x] `DEFENSE_IN_DEPTH.md` present (this file) — PR #8
 
 ## 2. CODEOWNERS and cloud bootstrap
-- [ ] `.github/CODEOWNERS` covers `/.github/`, `/.vscode/`, `/.cursor/`, `/.devcontainer/`, `/.claude/`, `/.codex/`, `/scripts/` with owners the maintainer names
+- [ ] `.github/CODEOWNERS` covers `/.github/`, `/.vscode/`, `/.cursor/`, `/.devcontainer/`, `/.claude/`, `/.codex/`, `/scripts/` with owners the maintainer names (PR pending)
 
 ## 3. Dependencies (pnpm)
 - [ ] `packageManager: pnpm@11.3+` pinned in `package.json`
