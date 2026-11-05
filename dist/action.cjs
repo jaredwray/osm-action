@@ -8003,7 +8003,9 @@ var exitCode = (report) => report.result === "pass" ? 0 : report.result === "fai
 // src/issues.ts
 var LABEL = "osm-action";
 var DASHBOARD = "<!-- osm-action:dashboard -->";
-var FLAG = /<!-- osm-action:flagged:([a-z\d][a-z\d-]*\/[a-z\d_.-]+) -->/;
+var SUPERSEDED = "<!-- osm-action:superseded -->";
+var IS_DASHBOARD = /^<!-- osm-action:dashboard -->(?:\r?\n|$)/;
+var FLAG = /^<!-- osm-action:flagged:([a-z\d][a-z\d-]*\/[a-z\d_.-]+) -->(?:\r?\n|$)/;
 var flagMarker = (repo) => `<!-- osm-action:flagged:${repo} -->`;
 var MAX_BODY = 6e4;
 var MAX_PAGES = 10;
@@ -8016,6 +8018,19 @@ function code(value) {
   return `${fence}${pad}${text}${pad}${fence}`;
 }
 var segment = (s) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+function fit(lines, footer) {
+  const note = "_Truncated to fit the GitHub issue size limit; the full list is in the JSON report._";
+  const full = [...lines, ...footer].join("\n");
+  if (full.length <= MAX_BODY) return full;
+  const kept = [];
+  let size = [note, ...footer].join("\n").length + 4;
+  for (const line of lines) {
+    if (size + line.length + 1 > MAX_BODY) break;
+    kept.push(line);
+    size += line.length + 1;
+  }
+  return [...kept, "", note, "", ...footer].join("\n");
+}
 var linkTarget = (url) => url.replace(/[()\s]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 var short = (sha) => sha.slice(0, 12);
 function revision(id) {
@@ -8118,24 +8133,24 @@ function dashboardBody(report, ctx, tracking) {
       lines.push(`- ${code(repo)} @ ${pins.map(code).join(", ")} (${count} ${count === 1 ? "use" : "uses"})`);
     }
     if (clean.length > limit) lines.push(`- …and ${clean.length - limit} more (see the JSON report)`);
-    lines.push(
-      "",
-      "<details><summary>About this dashboard</summary>",
-      "",
-      "osm-action checks every repository behind the GitHub Actions and reusable workflows this repository uses, including nested dependencies, against OpenSourceMalware.",
-      "A flag is repository-level threat intelligence, not a verdict on the pinned commit. No match does not establish that code is safe.",
-      "Each flagged repository gets its own issue, which closes automatically once it is no longer used or flagged. Closing one as **not planned** acknowledges it: it is not reopened, but scans keep failing while the dependency remains.",
-      "",
-      "</details>",
-      ""
-    );
-    return lines.join("\n");
+    return lines;
   };
-  for (const [limit, locs] of [[200, 5], [50, 3], [10, 1], [0, 0]]) {
-    const body = render(limit, locs);
+  const footer = [
+    "",
+    "<details><summary>About this dashboard</summary>",
+    "",
+    "osm-action checks every repository behind the GitHub Actions and reusable workflows this repository uses, including nested dependencies, against OpenSourceMalware.",
+    "A flag is repository-level threat intelligence, not a verdict on the pinned commit. No match does not establish that code is safe.",
+    "Each flagged repository gets its own issue, which closes automatically once it is no longer used or flagged. Closing one as **not planned** acknowledges it: it is not reopened, but scans keep failing while the dependency remains.",
+    "",
+    "</details>",
+    ""
+  ];
+  for (const [limit, locs] of [[200, 5], [50, 3], [10, 1]]) {
+    const body = [...render(limit, locs), ...footer].join("\n");
     if (body.length <= MAX_BODY) return body;
   }
-  return render(0, 0).slice(0, MAX_BODY);
+  return fit(render(0, 0), footer);
 }
 function flagBody(report, repo, ctx) {
   const v = view(report);
@@ -8157,7 +8172,7 @@ function flagBody(report, repo, ctx) {
       if (loc.chain.length > 1) lines.push(`    - via ${loc.chain.map(code).join(" → ")}`);
     }
   }
-  lines.push(
+  return fit(lines, [
     "",
     "### What to do",
     "",
@@ -8167,8 +8182,7 @@ function flagBody(report, repo, ctx) {
     "",
     "This issue closes automatically once the repository is no longer used or flagged. Closing it as **not planned** acknowledges the risk: it will not be reopened, but scans keep failing while the dependency remains.",
     ""
-  );
-  return lines.join("\n").slice(0, MAX_BODY);
+  ]);
 }
 async function issueSkipReason(env, scanned, defaultBranch) {
   if (!env.event || !ISSUE_EVENTS.includes(env.event)) {
@@ -8249,12 +8263,20 @@ var IssueSync = class {
   comment(issue, body) {
     return this.call(`/issues/${issue.number}/comments`, { method: "POST", body: { body } });
   }
-  /** Close all but the oldest open issue in a group created by concurrent runs. */
+  /**
+   * Close all but the oldest open issue in a group created by concurrent runs. Superseded issues
+   * lose their marker, so they never count as the group's latest closed (or acknowledged) issue.
+   */
   async dedupe(group) {
     const open = group.filter((x) => x.open);
     for (const extra of open.slice(1)) {
-      await this.comment(extra, `Superseded by #${open[0].number}.`);
-      await this.update(extra, { state: "closed", state_reason: "completed" });
+      await this.update(extra, {
+        state: "closed",
+        state_reason: "completed",
+        body: `${SUPERSEDED}
+Superseded by #${open[0].number}.
+`
+      });
     }
     return open[0];
   }
@@ -8304,7 +8326,7 @@ var IssueSync = class {
         outcome.closed.push(issue.number);
       }
     }
-    const dashboards = existing.filter((x) => x.body.includes(DASHBOARD));
+    const dashboards = existing.filter((x) => IS_DASHBOARD.test(x.body));
     const body = dashboardBody(report, ctx, tracking);
     const dashboard = await this.dedupe(dashboards) ?? dashboards[0];
     if (dashboard) {

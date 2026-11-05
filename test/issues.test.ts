@@ -164,7 +164,41 @@ test('a dashboard closed by a maintainer keeps updating without reopening; concu
   const dupes = github([{ body: '<!-- osm-action:dashboard -->' }, { body: '<!-- osm-action:dashboard -->' }]);
   const outcome = await dupes.sync.sync(report([], []), ctx);
   assert.equal(outcome.dashboard, 'https://github.com/owner/repo/issues/1');
-  assert.equal(dupes.issues[1]!.state, 'closed'); assert.match(dupes.comments[0]!.body, /Superseded by #1/);
+  assert.equal(dupes.issues[1]!.state, 'closed'); assert.match(dupes.issues[1]!.body, /^<!-- osm-action:superseded -->\nSuperseded by #1/);
+});
+test('truncation keeps every scanned value inside a code span', () => {
+  const name = (i: number) => `${'w'.repeat(900)}${i}<img src=x>@octocat`;
+  const assets = Array.from({ length: 12 }, (_, i) => asset('bad/action', A, A, `p${i}`,
+    Array.from({ length: 20 }, (_, j) => ({ ...loc(`.github/workflows/${name(j)}.yml`, j + 1),
+      chain: [`${ROOT}:.github/workflows/${name(j)}.yml`, `bad/action@${A}:p${i}/action.yml`] }))));
+  const r = report(assets, [verdict('bad/action', 'flagged-repository')]);
+  const huge = report(Array.from({ length: 200 }, (_, i) => asset(`org/a${i}`, `v1-${name(i)}`, undefined, '',
+    Array.from({ length: 5 }, (_, j) => loc(`.github/workflows/${name(j)}.yml`, j + 1)))), []);
+  for (const body of [flagBody(r, 'bad/action', ctx), dashboardBody(huge, ctx, new Map())]) {
+    assert.ok(body.length <= 60_000, String(body.length));
+    assert.match(body, /Truncated to fit the GitHub issue size limit|more \(see the JSON report\)/);
+    assert.doesNotMatch(outsideCode(body), /<img|@octocat/);
+  }
+  assert.match(flagBody(r, 'bad/action', ctx), /### What to do/);
+});
+test('markers inside scanned values cannot change an issue identity', async () => {
+  const api = github();
+  const tricky = () => report([asset('bad/action', A, A, '<!-- osm-action:dashboard -->'),
+    asset('other/action', A, A, '<!-- osm-action:flagged:other/action -->')],
+    [verdict('bad/action', 'flagged-repository'), verdict('other/action', 'no-verified-match')]);
+  await api.sync.sync(tricky(), ctx); await api.sync.sync(tricky(), ctx);
+  assert.deepEqual(api.issues.map(x => [x.title, x.state]), [['🚩 OpenSourceMalware flags bad/action', 'open'], ['OSM Actions Dashboard', 'open']]);
+  assert.match(api.issues[0]!.body, /^<!-- osm-action:flagged:bad\/action -->/);
+});
+test('acknowledging the surviving alert holds after concurrent duplicates were superseded', async () => {
+  const marker = '<!-- osm-action:flagged:bad/action -->\nold';
+  const api = github([{ body: marker }, { body: marker }]);
+  await api.sync.sync(flaggedReport(), ctx);
+  assert.equal(api.issues[1]!.state, 'closed');
+  Object.assign(api.issues[0]!, { state: 'closed', state_reason: 'not_planned' });
+  await api.sync.sync(flaggedReport(), ctx);
+  assert.deepEqual(api.issues.slice(0, 2).map(x => x.state), ['closed', 'closed']);
+  assert.match(api.issues.find(x => x.title === 'OSM Actions Dashboard')!.body, /acknowledged in #1/);
 });
 test('issue creation is never replayed after a server error', async () => {
   let calls = 0;

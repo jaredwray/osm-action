@@ -5,7 +5,10 @@ import type { Asset, Location, Report, Verdict } from './model.ts';
 
 export const LABEL = 'osm-action';
 const DASHBOARD = '<!-- osm-action:dashboard -->';
-const FLAG = /<!-- osm-action:flagged:([a-z\d][a-z\d-]*\/[a-z\d_.-]+) -->/;
+const SUPERSEDED = '<!-- osm-action:superseded -->';
+// Markers identify an issue only as the body's first line; scanned text can appear later in a body.
+const IS_DASHBOARD = /^<!-- osm-action:dashboard -->(?:\r?\n|$)/;
+const FLAG = /^<!-- osm-action:flagged:([a-z\d][a-z\d-]*\/[a-z\d_.-]+) -->(?:\r?\n|$)/;
 const flagMarker = (repo: string) => `<!-- osm-action:flagged:${repo} -->`;
 const MAX_BODY = 60_000; // GitHub rejects issue bodies over 65,536 characters.
 const MAX_PAGES = 10;
@@ -33,6 +36,22 @@ export function code(value: string): string {
   return `${fence}${pad}${text}${pad}${fence}`;
 }
 const segment = (s: string) => encodeURIComponent(s).replace(/[!'()*]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+/**
+ * Joins whole lines within the body limit. Rendered code spans and links never cross a line
+ * break, so cutting between lines can never leave scanned text outside a code span.
+ */
+function fit(lines: string[], footer: string[]): string {
+  const note = '_Truncated to fit the GitHub issue size limit; the full list is in the JSON report._';
+  const full = [...lines, ...footer].join('\n');
+  if (full.length <= MAX_BODY) return full;
+  const kept: string[] = [];
+  let size = [note, ...footer].join('\n').length + 4;
+  for (const line of lines) {
+    if (size + line.length + 1 > MAX_BODY) break;
+    kept.push(line); size += line.length + 1;
+  }
+  return [...kept, '', note, '', ...footer].join('\n');
+}
 const linkTarget = (url: string) => url.replace(/[()\s]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 const short = (sha: string) => sha.slice(0, 12);
 /** Splits a source id of the form owner/repository@sha. */
@@ -131,18 +150,18 @@ export function dashboardBody(report: Report, ctx: IssueContext, tracking: Map<s
       lines.push(`- ${code(repo)} @ ${pins.map(code).join(', ')} (${count} ${count === 1 ? 'use' : 'uses'})`);
     }
     if (clean.length > limit) lines.push(`- …and ${clean.length - limit} more (see the JSON report)`);
-    lines.push('', '<details><summary>About this dashboard</summary>', '',
-      'osm-action checks every repository behind the GitHub Actions and reusable workflows this repository uses, including nested dependencies, against OpenSourceMalware.',
-      'A flag is repository-level threat intelligence, not a verdict on the pinned commit. No match does not establish that code is safe.',
-      'Each flagged repository gets its own issue, which closes automatically once it is no longer used or flagged. Closing one as **not planned** acknowledges it: it is not reopened, but scans keep failing while the dependency remains.',
-      '', '</details>', '');
-    return lines.join('\n');
+    return lines;
   };
-  for (const [limit, locs] of [[200, 5], [50, 3], [10, 1], [0, 0]] as const) {
-    const body = render(limit, locs);
+  const footer = ['', '<details><summary>About this dashboard</summary>', '',
+    'osm-action checks every repository behind the GitHub Actions and reusable workflows this repository uses, including nested dependencies, against OpenSourceMalware.',
+    'A flag is repository-level threat intelligence, not a verdict on the pinned commit. No match does not establish that code is safe.',
+    'Each flagged repository gets its own issue, which closes automatically once it is no longer used or flagged. Closing one as **not planned** acknowledges it: it is not reopened, but scans keep failing while the dependency remains.',
+    '', '</details>', ''];
+  for (const [limit, locs] of [[200, 5], [50, 3], [10, 1]] as const) {
+    const body = [...render(limit, locs), ...footer].join('\n');
     if (body.length <= MAX_BODY) return body;
   }
-  return render(0, 0).slice(0, MAX_BODY);
+  return fit(render(0, 0), footer);
 }
 
 /** The alert issue for one flagged repository. */
@@ -159,12 +178,11 @@ export function flagBody(report: Report, repo: string, ctx: IssueContext): strin
       if (loc.chain.length > 1) lines.push(`    - via ${loc.chain.map(code).join(' → ')}`);
     }
   }
-  lines.push('', '### What to do', '',
+  return fit(lines, ['', '### What to do', '',
     '1. Read the OSM report and decide whether it applies to the pinned commit.',
     '2. Remove or replace this dependency in every location above.',
     '3. If workflows already ran it, treat secrets and tokens available to those jobs as exposed and rotate them.', '',
-    'This issue closes automatically once the repository is no longer used or flagged. Closing it as **not planned** acknowledges the risk: it will not be reopened, but scans keep failing while the dependency remains.', '');
-  return lines.join('\n').slice(0, MAX_BODY);
+    'This issue closes automatically once the repository is no longer used or flagged. Closing it as **not planned** acknowledges the risk: it will not be reopened, but scans keep failing while the dependency remains.', '']);
 }
 
 // --- Synchronization -----------------------------------------------------
@@ -237,12 +255,15 @@ export class IssueSync {
   private comment(issue: Issue, body: string) {
     return this.call(`/issues/${issue.number}/comments`, { method: 'POST', body: { body } });
   }
-  /** Close all but the oldest open issue in a group created by concurrent runs. */
+  /**
+   * Close all but the oldest open issue in a group created by concurrent runs. Superseded issues
+   * lose their marker, so they never count as the group's latest closed (or acknowledged) issue.
+   */
   private async dedupe(group: Issue[]): Promise<Issue | undefined> {
     const open = group.filter(x => x.open);
     for (const extra of open.slice(1)) {
-      await this.comment(extra, `Superseded by #${open[0]!.number}.`);
-      await this.update(extra, { state: 'closed', state_reason: 'completed' });
+      await this.update(extra, { state: 'closed', state_reason: 'completed',
+        body: `${SUPERSEDED}\nSuperseded by #${open[0]!.number}.\n` });
     }
     return open[0];
   }
@@ -295,7 +316,7 @@ export class IssueSync {
         outcome.closed.push(issue.number);
       }
     }
-    const dashboards = existing.filter(x => x.body.includes(DASHBOARD));
+    const dashboards = existing.filter(x => IS_DASHBOARD.test(x.body));
     const body = dashboardBody(report, ctx, tracking);
     // Keep updating a dashboard a maintainer closed, without reopening it.
     const dashboard = await this.dedupe(dashboards) ?? dashboards[0];
