@@ -2,52 +2,87 @@ import { ScanError } from './model.ts';
 export type Fetch = typeof globalThis.fetch;
 export type Sleep = (ms: number) => Promise<void>;
 export const sleep: Sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const ATTEMPTS = 3;
+const MAX_RETRY_DELAY = 60_000;
+const services: Record<string, string> = { 'api.github.com': 'GitHub', 'api.opensourcemalware.com': 'OpenSourceMalware' };
+const statusHints: Record<number, string> = { 401: 'credentials were rejected', 403: 'access denied',
+  404: 'not found or not accessible with the supplied token' };
 export class Http {
   constructor(private readonly fetcher: Fetch = globalThis.fetch,
     private readonly pause: Sleep = sleep) {}
 
   async json(url: URL, token: string, limit = 2_000_000): Promise<unknown> {
-    if (url.protocol !== 'https:' || !['api.github.com', 'api.opensourcemalware.com'].includes(url.hostname) ||
-        url.username || url.password || url.port) throw new ScanError('Disallowed API destination');
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const signal = AbortSignal.timeout(20_000);
+    const service = services[url.hostname];
+    if (url.protocol !== 'https:' || !service || url.username || url.password || url.port) {
+      throw new ScanError('Disallowed API destination');
+    }
+    for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+      const final = attempt === ATTEMPTS - 1;
+      const backoff = 1000 * 2 ** attempt;
       let response: Response;
       try {
-        response = await this.fetcher(url, { redirect: 'error', signal,
+        response = await this.fetcher(url, { redirect: 'error', signal: AbortSignal.timeout(20_000),
           headers: { Accept: 'application/json', 'User-Agent': 'osm-action/0.1.0',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
             ...(url.hostname === 'api.github.com' ? { 'X-GitHub-Api-Version': '2022-11-28' } : {}) } });
-      } catch { throw new ScanError('API request failed or timed out (details redacted)'); }
-      const reader = response.body?.getReader();
-      const chunks: Uint8Array[] = [];
-      let bytes = 0;
-      try {
-        if (reader) for (;;) {
-          const item = await reader.read();
-          if (item.done) break;
-          bytes += item.value.byteLength;
-          if (bytes > limit) { await reader.cancel(); throw new ScanError('API response exceeded size limit'); }
-          chunks.push(item.value);
-        }
-      } catch (error) {
-        if (error instanceof ScanError) throw error;
-        throw new ScanError('API response could not be read');
+      } catch {
+        // Connection resets and timeouts are usually transient.
+        if (!final) { await this.pause(backoff); continue; }
+        throw new ScanError(`${service} API request failed or timed out (details redacted)`);
       }
-      const body = Buffer.concat(chunks).toString('utf8');
-      if ((response.status === 429 || response.status >= 500) && attempt < 2) {
+      let body: string;
+      try { body = await read(response, limit); } catch (error) {
+        if (error instanceof ScanError) throw error;
+        if (!final) { await this.pause(backoff); continue; }
+        throw new ScanError(`${service} API response could not be read`);
+      }
+      const remaining = response.headers.get('x-ratelimit-remaining');
+      const retryAfter = response.headers.get('retry-after');
+      // GitHub reports primary and secondary rate limits as 403 as well as 429.
+      const githubLimited = service === 'GitHub' && response.status === 403 && (remaining === '0' || retryAfter !== null);
+      const throttled = response.status === 429 || githubLimited;
+      if ((throttled || response.status >= 500) && !final) {
         if (response.status === 429 && /daily|24 hours|24-hour/i.test(body)) {
-          throw new ScanError('API daily quota exhausted', 429);
+          throw new ScanError(`${service} API daily quota exhausted`, 429);
         }
-        const retry = response.headers.get('retry-after');
-        const numeric = retry === null ? NaN : Number(retry);
-        const ms = Number.isFinite(numeric) ? numeric * 1000 : retry ? Date.parse(retry) - Date.now() : 1000 * 2 ** attempt;
-        if (!Number.isFinite(ms) || ms > 60_000) throw new ScanError('API retry delay exceeds scan budget', response.status);
+        const ms = retryDelay(retryAfter, githubLimited && remaining === '0' ? response.headers.get('x-ratelimit-reset') : null,
+          // OSM documents a per-minute window without Retry-After; short waits would retry into the same window.
+          throttled ? 20_000 * 2 ** attempt : backoff);
+        if (!Number.isFinite(ms) || ms > MAX_RETRY_DELAY) {
+          throw new ScanError(githubLimited ? 'GitHub API rate limit exhausted; supply a GitHub token or retry later'
+            : `${service} API retry delay exceeds scan budget`, response.status);
+        }
         await this.pause(Math.max(1000, ms));
         continue;
       }
-      if (!response.ok) throw new ScanError(`API returned HTTP ${response.status}`, response.status);
-      try { return JSON.parse(body); } catch { throw new ScanError('API returned invalid JSON'); }
+      if (!response.ok) {
+        const hint = statusHints[response.status];
+        throw new ScanError(`${service} API returned HTTP ${response.status}${hint ? ` (${hint})` : ''}`, response.status);
+      }
+      try { return JSON.parse(body); } catch { throw new ScanError(`${service} API returned invalid JSON`); }
     }
-    throw new ScanError('API retries exhausted');
+    throw new ScanError(`${service} API retries exhausted`);
   }
+}
+async function read(response: Response, limit: number): Promise<string> {
+  const reader = response.body?.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  if (reader) for (;;) {
+    const item = await reader.read();
+    if (item.done) break;
+    bytes += item.value.byteLength;
+    if (bytes > limit) { await reader.cancel(); throw new ScanError('API response exceeded size limit'); }
+    chunks.push(item.value);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+/** Milliseconds to wait, from Retry-After, a rate-limit reset epoch, or the fallback. */
+function retryDelay(retryAfter: string | null, resetEpoch: string | null, fallback: number): number {
+  if (retryAfter !== null && retryAfter.trim()) {
+    const seconds = Number(retryAfter);
+    return Number.isFinite(seconds) ? seconds * 1000 : Date.parse(retryAfter) - Date.now();
+  }
+  if (resetEpoch !== null) return Number(resetEpoch) * 1000 - Date.now();
+  return fallback;
 }

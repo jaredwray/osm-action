@@ -71,6 +71,20 @@ test('bundled Action missing token fails before network or success output', asyn
   const result = await runBundle('action', [], { ...process.env, INPUT_REPOSITORY: 'demo/root', INPUT_SHA: A,
     'INPUT_OSM-TOKEN': '', RUNNER_TEMP: tmpdir(), GITHUB_OUTPUT: '/unwritten', GITHUB_STEP_SUMMARY: '/unwritten' });
   assert.equal(result.code, 2); assert.match(result.stdout, /incomplete/);
+  assert.match(result.stdout, /OSM_API_TOKEN is required/);
+});
+test('bundled CLI explains an existing output file without echoing its path', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'osm-cli-'));
+  try {
+    await mkdir(join(dir, '.github/workflows'), { recursive: true });
+    await writeFile(join(dir, '.github/workflows/ci.yml'), 'jobs:\n  build:\n    steps:\n      - run: echo\n');
+    const output = join(dir, 'secret-name.json'); await writeFile(output, '{}');
+    const result = await exec(process.execPath, [resolve('dist/cli.cjs'), '--path', dir, '--output', output], {
+      env: { ...process.env, OSM_API_TOKEN: 'test-token' } }).then(() => ({ code: 0, stderr: '' }),
+      (error: { code: number; stderr: string }) => error);
+    assert.equal(result.code, 2);
+    assert.match(result.stderr, /Output file already exists/); assert.doesNotMatch(result.stderr, /secret-name/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });
 test('bundled CLI runs locally without executing a run step', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'osm-cli-'));

@@ -6,9 +6,9 @@ Report vulnerabilities through this repository's private vulnerability reporting
 
 The pinned Action reads candidate files through GitHub's API at an explicit full commit SHA. It never checks out, imports, builds, installs, or executes the candidate. Active policy comes only from trusted workflow inputs; candidate configuration and suppression files are never loaded.
 
-API destinations are fixed, redirects are refused, credentials are header-only, and upstream bodies/errors are not echoed. Private dependency repository identities are not sent to OSM; their reputation checks are incomplete. Reports still contain private names available through GitHub, so keep them inside your organization.
+API destinations are fixed, redirects are refused, credentials are header-only, and upstream bodies/errors are not echoed; user-facing error messages are fixed project text. OSM report links are kept only when they point to `https://opensourcemalware.com/`. Private dependency repository identities are not sent to OSM; their reputation checks are incomplete. Reports still contain private names available through GitHub, so keep them inside your organization.
 
-The scanner bounds source/response sizes, dependency counts, recursion, retries, and request durations. It rejects custom YAML tags, duplicates, aliases, unsafe paths, and symlink metadata, and checks downloaded Git blob hashes. Set an overall job timeout too.
+The scanner bounds source/response sizes, dependency counts, recursion, retries, and request durations. It rejects custom YAML tags, duplicates, merge keys, exponential alias expansion, unsafe paths, and symlink metadata, and checks downloaded Git blob hashes. Set an overall job timeout too.
 
 Local CLI mode expects a trusted, stable filesystem snapshot. It does not provide filesystem isolation against a concurrent process replacing parent directories. Use API mode for untrusted PR inspection.
 

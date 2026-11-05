@@ -3,15 +3,20 @@ import { constants } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve, sep } from 'node:path';
 import { Http } from './http.ts';
-import { filePath, object, repository, ScanError, SHA } from './model.ts';
+import { filePath, object, repository, repositoryName, ScanError, SHA } from './model.ts';
 
 export interface Source {
   id: string;
   workflows(): Promise<string[]>;
   read(path: string): Promise<string | undefined>;
 }
+export interface Resolved {
+  source: Source; sha: string; private: boolean;
+  /** GitHub's canonical owner/repository casing. */
+  name: string;
+}
 export interface Resolver {
-  resolve(repo: string, ref: string): Promise<{ source: Source; sha: string; private: boolean }>;
+  resolve(repo: string, ref: string): Promise<Resolved>;
 }
 const MAX_FILE = 512_000;
 export class LocalSource implements Source {
@@ -60,7 +65,7 @@ export class LocalSource implements Source {
 }
 
 export class GitHub implements Resolver {
-  private cache = new Map<string, Promise<{ source: Source; sha: string; private: boolean }>>();
+  private cache = new Map<string, Promise<Resolved>>();
   constructor(private readonly token: string, private readonly http = new Http()) {}
   async get(path: string): Promise<unknown> {
     return this.http.json(new URL(`https://api.github.com${path}`), this.token, 8_000_000);
@@ -82,7 +87,8 @@ export class GitHub implements Resolver {
         if (!object(commit.commit) || !object(commit.commit.tree) || typeof commit.commit.tree.sha !== 'string' || !SHA.test(commit.commit.tree.sha)) {
           throw new ScanError('Commit has no valid tree identity');
         }
-        return { source: new GitHubSource(this, repo, sha, commit.commit.tree.sha), sha, private: meta.private };
+        return { source: new GitHubSource(this, repo, sha, commit.commit.tree.sha), sha, private: meta.private,
+          name: repositoryName(meta.full_name) };
       })();
       this.cache.set(key, result);
     }

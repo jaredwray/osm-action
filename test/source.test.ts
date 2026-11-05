@@ -47,6 +47,9 @@ test('repository rename or different resolved commit is rejected', async () => {
 test('public/private visibility is explicitly established', async () => {
   assert.equal((await remote({ private: true }).github.resolve('test/repo', A)).private, true);
 });
+test('resolution returns GitHub canonical casing for intelligence lookups', async () => {
+  assert.equal((await remote({ name: 'Test/Repo' }).github.resolve('test/repo', A)).name, 'Test/Repo');
+});
 test('local source rejects traversal, symlink directories, and oversized files', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'osm-test-'));
   try {
