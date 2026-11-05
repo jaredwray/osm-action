@@ -1,0 +1,57 @@
+# TEMPLATE: replace PINNED_OSM_ACTION_COMMIT with a reviewed full commit SHA.
+# Keep this on the trusted default branch. Never add PR checkout/scripts,
+# npm install, local uses, PR-defined policy, or untrusted artifacts.
+# This merge gate does not stop independent PR build workflows from starting.
+name: OSM fork PR inspection
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+concurrency:
+  group: osm-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      verdict: ${{ steps.osm.outputs.result }}
+    steps:
+      - name: Inspect candidate files as data
+        id: osm
+        uses: jaredwray/osm-action@PINNED_OSM_ACTION_COMMIT
+        with:
+          osm-token: ${{ secrets.OSM_API_TOKEN }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          sha: ${{ github.event.pull_request.head.sha }}
+  report:
+    needs: inspect
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - name: Report against the inspected head commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+          JOB_RESULT: ${{ needs.inspect.result }}
+          VERDICT: ${{ needs.inspect.outputs.verdict }}
+        run: |
+          state=error
+          description='OSM repository scan incomplete'
+          if [ "$JOB_RESULT" = success ] && [ "$VERDICT" = pass ]; then
+            state=success
+            description='No blocking repository-intelligence findings'
+          elif [ "$VERDICT" = fail ]; then
+            state=failure
+            description='OSM repository policy blocked this revision'
+          fi
+          gh api --method POST "repos/$REPOSITORY/statuses/$CANDIDATE_SHA" \
+            -f state="$state" \
+            -f context='OSM / repository-intelligence' \
+            -f description="$description"

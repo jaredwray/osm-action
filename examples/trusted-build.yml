@@ -1,0 +1,29 @@
+# TEMPLATE: replace PINNED_OSM_ACTION_COMMIT with a reviewed full commit SHA.
+# Intended for a protected branch; the scanner never checks out candidate code.
+name: Protected build
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  malware:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check action repositories
+        uses: jaredwray/osm-action@PINNED_OSM_ACTION_COMMIT
+        with:
+          osm-token: ${{ secrets.OSM_API_TOKEN }}
+          repository: ${{ github.repository }}
+          sha: ${{ github.sha }}
+  build:
+    needs: malware
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - run: echo 'Replace with the project build commands'

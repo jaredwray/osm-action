@@ -80,7 +80,8 @@ out
 
 # Nuxt.js build / generate output
 .nuxt
-dist
+# Commit bundled Action entry points for consumers.
+!dist/
 .output
 
 # Gatsby files
@@ -147,3 +148,5 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+osm-report.json
