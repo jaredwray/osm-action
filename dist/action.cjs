@@ -1176,8 +1176,8 @@ var require_stringifyString = __commonJS({
             case "u":
               {
                 str += json.slice(start, i);
-                const code = json.substr(i + 2, 4);
-                switch (code) {
+                const code2 = json.substr(i + 2, 4);
+                switch (code2) {
                   case "0000":
                     str += "\\0";
                     break;
@@ -1203,8 +1203,8 @@ var require_stringifyString = __commonJS({
                     str += "\\P";
                     break;
                   default:
-                    if (code.substr(0, 2) === "00")
-                      str += "\\x" + code.substr(2);
+                    if (code2.substr(0, 2) === "00")
+                      str += "\\x" + code2.substr(2);
                     else
                       str += json.substr(i, 6);
                 }
@@ -1317,9 +1317,9 @@ ${indent}`) + "'";
         start = start.replace(/\n+/g, `$&${indent}`);
       }
       const indentSize = indent ? "2" : "1";
-      let header = (startWithSpace ? indentSize : "") + chomp;
+      let header2 = (startWithSpace ? indentSize : "") + chomp;
       if (comment) {
-        header += " " + commentString(comment.replace(/ ?[\r\n]+/g, " "));
+        header2 += " " + commentString(comment.replace(/ ?[\r\n]+/g, " "));
         if (onComment)
           onComment();
       }
@@ -1334,11 +1334,11 @@ ${indent}`) + "'";
         }
         const body = foldFlowLines.foldFlowLines(`${start}${foldedValue}${end}`, indent, foldFlowLines.FOLD_BLOCK, foldOptions);
         if (!literalFallback)
-          return `>${header}
+          return `>${header2}
 ${indent}${body}`;
       }
       value = value.replace(/\n+/g, `$&${indent}`);
-      return `|${header}
+      return `|${header2}
 ${indent}${start}${value}${end}`;
     }
     function plainString(item, ctx, onComment, onChompKeep) {
@@ -3703,22 +3703,22 @@ var require_errors = __commonJS({
   "node_modules/yaml/dist/errors.js"(exports2) {
     "use strict";
     var YAMLError = class extends Error {
-      constructor(name, pos, code, message) {
+      constructor(name, pos, code2, message) {
         super();
         this.name = name;
-        this.code = code;
+        this.code = code2;
         this.message = message;
         this.pos = pos;
       }
     };
     var YAMLParseError = class extends YAMLError {
-      constructor(pos, code, message) {
-        super("YAMLParseError", pos, code, message);
+      constructor(pos, code2, message) {
+        super("YAMLParseError", pos, code2, message);
       }
     };
     var YAMLWarning = class extends YAMLError {
-      constructor(pos, code, message) {
-        super("YAMLWarning", pos, code, message);
+      constructor(pos, code2, message) {
+        super("YAMLWarning", pos, code2, message);
       }
     };
     var prettifyError = (src, lc) => (error) => {
@@ -4441,10 +4441,10 @@ var require_resolve_block_scalar = __commonJS({
     var Scalar = require_Scalar();
     function resolveBlockScalar(ctx, scalar, onError) {
       const start = scalar.offset;
-      const header = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
-      if (!header)
+      const header2 = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
+      if (!header2)
         return { value: "", type: null, comment: "", range: [start, start, start] };
-      const type = header.mode === ">" ? Scalar.Scalar.BLOCK_FOLDED : Scalar.Scalar.BLOCK_LITERAL;
+      const type = header2.mode === ">" ? Scalar.Scalar.BLOCK_FOLDED : Scalar.Scalar.BLOCK_LITERAL;
       const lines = scalar.source ? splitLines(scalar.source) : [];
       let chompStart = lines.length;
       for (let i = lines.length - 1; i >= 0; --i) {
@@ -4455,26 +4455,26 @@ var require_resolve_block_scalar = __commonJS({
           break;
       }
       if (chompStart === 0) {
-        const value2 = header.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
-        let end2 = start + header.length;
+        const value2 = header2.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
+        let end2 = start + header2.length;
         if (scalar.source)
           end2 += scalar.source.length;
-        return { value: value2, type, comment: header.comment, range: [start, end2, end2] };
+        return { value: value2, type, comment: header2.comment, range: [start, end2, end2] };
       }
-      let trimIndent = scalar.indent + header.indent;
-      let offset = scalar.offset + header.length;
+      let trimIndent = scalar.indent + header2.indent;
+      let offset = scalar.offset + header2.length;
       let contentStart = 0;
       for (let i = 0; i < chompStart; ++i) {
         const [indent, content] = lines[i];
         if (content === "" || content === "\r") {
-          if (header.indent === 0 && indent.length > trimIndent)
+          if (header2.indent === 0 && indent.length > trimIndent)
             trimIndent = indent.length;
         } else {
           if (indent.length < trimIndent) {
             const message = "Block scalars with more-indented leading empty lines must use an explicit indentation indicator";
             onError(offset + indent.length, "MISSING_CHAR", message);
           }
-          if (header.indent === 0)
+          if (header2.indent === 0)
             trimIndent = indent.length;
           contentStart = i;
           if (trimIndent === 0 && !ctx.atRoot) {
@@ -4501,7 +4501,7 @@ var require_resolve_block_scalar = __commonJS({
         if (crlf)
           content = content.slice(0, -1);
         if (content && indent.length < trimIndent) {
-          const src = header.indent ? "explicit indentation indicator" : "first line";
+          const src = header2.indent ? "explicit indentation indicator" : "first line";
           const message = `Block scalar lines must not be less indented than their ${src}`;
           onError(offset - content.length - (crlf ? 2 : 1), "BAD_INDENT", message);
           indent = "";
@@ -4528,7 +4528,7 @@ var require_resolve_block_scalar = __commonJS({
           prevMoreIndented = false;
         }
       }
-      switch (header.chomp) {
+      switch (header2.chomp) {
         case "-":
           break;
         case "+":
@@ -4540,8 +4540,8 @@ var require_resolve_block_scalar = __commonJS({
         default:
           value += "\n";
       }
-      const end = start + header.length + scalar.source.length;
-      return { value, type, comment: header.comment, range: [start, end, end] };
+      const end = start + header2.length + scalar.source.length;
+      return { value, type, comment: header2.comment, range: [start, end, end] };
     }
     function parseBlockScalarHeader({ offset, props }, strict, onError) {
       if (props[0].type !== "block-scalar-header") {
@@ -4627,7 +4627,7 @@ var require_resolve_flow_scalar = __commonJS({
       const { offset, type, source, end } = scalar;
       let _type;
       let value;
-      const _onError = (rel, code, msg) => onError(offset + rel, code, msg);
+      const _onError = (rel, code2, msg) => onError(offset + rel, code2, msg);
       switch (type) {
         case "scalar":
           _type = Scalar.Scalar.PLAIN;
@@ -4825,9 +4825,9 @@ var require_resolve_flow_scalar = __commonJS({
     function parseCharCode(source, offset, length, onError) {
       const cc = source.substr(offset, length);
       const ok = cc.length === length && /^[0-9a-fA-F]+$/.test(cc);
-      const code = ok ? parseInt(cc, 16) : NaN;
+      const code2 = ok ? parseInt(cc, 16) : NaN;
       try {
-        return String.fromCodePoint(code);
+        return String.fromCodePoint(code2);
       } catch {
         const raw = source.substr(offset - 2, length + 2);
         onError(offset - 2, "BAD_DQ_ESCAPE", `Invalid escape sequence ${raw}`);
@@ -5149,12 +5149,12 @@ var require_composer = __commonJS({
         this.prelude = [];
         this.errors = [];
         this.warnings = [];
-        this.onError = (source, code, message, warning) => {
+        this.onError = (source, code2, message, warning) => {
           const pos = getErrorPos(source);
           if (warning)
-            this.warnings.push(new errors.YAMLWarning(pos, code, message));
+            this.warnings.push(new errors.YAMLWarning(pos, code2, message));
           else
-            this.errors.push(new errors.YAMLParseError(pos, code, message));
+            this.errors.push(new errors.YAMLParseError(pos, code2, message));
         };
         this.directives = new directives.Directives({ version: options.version || "1.2" });
         this.options = options;
@@ -5316,12 +5316,12 @@ var require_cst_scalar = __commonJS({
     var stringifyString = require_stringifyString();
     function resolveAsScalar(token, strict = true, onError) {
       if (token) {
-        const _onError = (pos, code, message) => {
+        const _onError = (pos, code2, message) => {
           const offset = typeof pos === "number" ? pos : Array.isArray(pos) ? pos[0] : pos.offset;
           if (onError)
-            onError(offset, code, message);
+            onError(offset, code2, message);
           else
-            throw new errors.YAMLParseError([offset, offset + 1], code, message);
+            throw new errors.YAMLParseError([offset, offset + 1], code2, message);
         };
         switch (token.type) {
           case "scalar":
@@ -5380,10 +5380,10 @@ var require_cst_scalar = __commonJS({
             type = "QUOTE_DOUBLE";
             break;
           case "block-scalar": {
-            const header = token.props[0];
-            if (header.type !== "block-scalar-header")
+            const header2 = token.props[0];
+            if (header2.type !== "block-scalar-header")
               throw new Error("Invalid block scalar header");
-            type = header.source[0] === ">" ? "BLOCK_FOLDED" : "BLOCK_LITERAL";
+            type = header2.source[0] === ">" ? "BLOCK_FOLDED" : "BLOCK_LITERAL";
             break;
           }
           default:
@@ -5415,10 +5415,10 @@ var require_cst_scalar = __commonJS({
       const head = source.substring(0, he);
       const body = source.substring(he + 1) + "\n";
       if (token.type === "block-scalar") {
-        const header = token.props[0];
-        if (header.type !== "block-scalar-header")
+        const header2 = token.props[0];
+        if (header2.type !== "block-scalar-header")
           throw new Error("Invalid block scalar header");
-        header.source = head;
+        header2.source = head;
         token.source = body;
       } else {
         const { offset } = token;
@@ -7402,10 +7402,10 @@ var systemErrors = {
 };
 function safeErrorMessage(error) {
   if (error instanceof ScanError) return error.message;
-  const code = object(error) || error instanceof Error ? error.code : void 0;
-  if (typeof code !== "string") return;
-  if (code.startsWith("ERR_PARSE_ARGS_")) return "Invalid command-line arguments";
-  if (/^E[A-Z]+$/.test(code)) return systemErrors[code] ?? `System error ${code}`;
+  const code2 = object(error) || error instanceof Error ? error.code : void 0;
+  if (typeof code2 !== "string") return;
+  if (code2.startsWith("ERR_PARSE_ARGS_")) return "Invalid command-line arguments";
+  if (/^E[A-Z]+$/.test(code2)) return systemErrors[code2] ?? `System error ${code2}`;
 }
 
 // src/http.ts
@@ -7425,11 +7425,12 @@ var Http = class {
   }
   fetcher;
   pause;
-  async json(url, token, limit = 2e6) {
+  async json(url, token, limit = 2e6, write) {
     const service = services[url.hostname];
-    if (url.protocol !== "https:" || !service || url.username || url.password || url.port) {
+    if (url.protocol !== "https:" || !service || url.username || url.password || url.port || write && service !== "GitHub") {
       throw new ScanError("Disallowed API destination");
     }
+    const replayable = write?.method !== "POST";
     for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
       const final = attempt === ATTEMPTS - 1;
       const backoff = 1e3 * 2 ** attempt;
@@ -7438,15 +7439,17 @@ var Http = class {
         response = await this.fetcher(url, {
           redirect: "error",
           signal: AbortSignal.timeout(2e4),
+          ...write ? { method: write.method, body: JSON.stringify(write.body) } : {},
           headers: {
             Accept: "application/json",
             "User-Agent": "osm-action/0.1.0",
+            ...write ? { "Content-Type": "application/json" } : {},
             ...token ? { Authorization: `Bearer ${token}` } : {},
             ...url.hostname === "api.github.com" ? { "X-GitHub-Api-Version": "2022-11-28" } : {}
           }
         });
       } catch {
-        if (!final) {
+        if (!final && replayable) {
           await this.pause(backoff);
           continue;
         }
@@ -7457,7 +7460,7 @@ var Http = class {
         body = await read(response, limit);
       } catch (error) {
         if (error instanceof ScanError) throw error;
-        if (!final) {
+        if (!final && replayable) {
           await this.pause(backoff);
           continue;
         }
@@ -7467,7 +7470,7 @@ var Http = class {
       const retryAfter = response.headers.get("retry-after");
       const githubLimited = service === "GitHub" && response.status === 403 && (remaining === "0" || retryAfter !== null);
       const throttled = response.status === 429 || githubLimited;
-      if ((throttled || response.status >= 500) && !final) {
+      if ((throttled || response.status >= 500 && replayable) && !final) {
         if (response.status === 429 && /daily|24 hours|24-hour/i.test(body)) {
           throw new ScanError(`${service} API daily quota exhausted`, 429);
         }
@@ -7719,11 +7722,11 @@ async function scan(root, resolver, intel, policy = defaultPolicy) {
   const consumeNode = () => {
     if (++nodes > 3e3) throw new Error("Workflow node budget exhausted");
   };
-  const add = (code, message, loc, level = "error") => {
-    const key = JSON.stringify([code, level, loc.source, loc.file, loc.line, message]);
+  const add = (code2, message, loc, level = "error") => {
+    const key = JSON.stringify([code2, level, loc.source, loc.file, loc.line, message]);
     if (seen.has(key)) return false;
     seen.add(key);
-    report.findings.push({ code, message, level, ...loc });
+    report.findings.push({ code: code2, message, level, ...loc });
     return true;
   };
   const incomplete = (message, loc) => {
@@ -7997,6 +8000,343 @@ function annotations(report) {
 }
 var exitCode = (report) => report.result === "pass" ? 0 : report.result === "fail" ? 1 : 2;
 
+// src/issues.ts
+var LABEL = "osm-action";
+var DASHBOARD = "<!-- osm-action:dashboard -->";
+var SUPERSEDED = "<!-- osm-action:superseded -->";
+var IS_DASHBOARD = /^<!-- osm-action:dashboard -->(?:\r?\n|$)/;
+var FLAG = /^<!-- osm-action:flagged:([a-z\d][a-z\d-]*\/[a-z\d_.-]+) -->(?:\r?\n|$)/;
+var flagMarker = (repo) => `<!-- osm-action:flagged:${repo} -->`;
+var MAX_BODY = 6e4;
+var MAX_PAGES = 10;
+var ISSUE_EVENTS = ["push", "schedule", "workflow_dispatch"];
+function code(value) {
+  const text = value.replace(/[\x00-\x1f\x7f]/g, " ");
+  const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((x) => x.length));
+  const fence = "`".repeat(longest + 1);
+  const pad = /^[` ]|[` ]$/.test(text) ? " " : "";
+  return `${fence}${pad}${text}${pad}${fence}`;
+}
+var segment = (s) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+function fit(lines, footer) {
+  const note = "_Truncated to fit the GitHub issue size limit; the full list is in the JSON report._";
+  const full = [...lines, ...footer].join("\n");
+  if (full.length <= MAX_BODY) return full;
+  const kept = [];
+  let size = [note, ...footer].join("\n").length + 4;
+  for (const line of lines) {
+    if (size + line.length + 1 > MAX_BODY) break;
+    kept.push(line);
+    size += line.length + 1;
+  }
+  return [...kept, "", note, "", ...footer].join("\n");
+}
+var linkTarget = (url) => url.replace(/[()\s]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+var short = (sha) => sha.slice(0, 12);
+function revision(id) {
+  const match = /^([a-z\d][a-z\d-]*\/[a-z\d_.-]+)@([a-f\d]{40})$/i.exec(id);
+  return match ? { repo: match[1], sha: match[2] } : void 0;
+}
+function where(loc, target) {
+  const at = revision(loc.source);
+  const label = code(loc.source === target ? `${loc.file}:${loc.line}` : `${at?.repo ?? loc.source}/${loc.file}:${loc.line}`);
+  if (!at) return label;
+  const path = loc.file.split("/").map(segment).join("/");
+  return `[${label}](https://github.com/${at.repo}/blob/${at.sha}/${path}#L${loc.line})`;
+}
+function places(locations, target, limit, indent = "  ") {
+  const unique = [...new Map(locations.map((x) => [`${x.source}\0${x.file}\0${x.line}`, x])).values()];
+  const lines = unique.slice(0, limit).map((loc) => `${indent}- used in ${where(loc, target)}`);
+  if (unique.length > limit) lines.push(`${indent}- …and ${unique.length - limit} more (see the JSON report)`);
+  return lines;
+}
+var uses = (asset) => `${asset.repository}${asset.path ? `/${asset.path}` : ""}`;
+function view(report) {
+  const byRepo = /* @__PURE__ */ new Map();
+  for (const asset of report.assets) byRepo.set(asset.repository, [...byRepo.get(asset.repository) ?? [], asset]);
+  return {
+    target: report.target,
+    scanned: revision(report.target),
+    byRepo,
+    verdicts: new Map(report.verdicts.map((v) => [v.repository, v]))
+  };
+}
+function header(report, v, ctx) {
+  const scanned = v.scanned ? `${code(v.scanned.repo)} at ${code(short(v.scanned.sha))}` : code(report.target);
+  return `Scan of ${scanned} · **${report.result.toUpperCase()}** · ${report.coverage.checkedRepositories} repositories checked` + (ctx.runUrl ? ` · [workflow run](${linkTarget(ctx.runUrl)})` : "");
+}
+function dashboardBody(report, ctx, tracking) {
+  const v = view(report);
+  const repos = [...v.byRepo.keys()].sort();
+  const flagged = repos.filter((r) => v.verdicts.get(r)?.state === "flagged-repository");
+  const clean = repos.filter((r) => v.verdicts.get(r)?.state === "no-verified-match");
+  const unchecked = repos.filter((r) => !flagged.includes(r) && !clean.includes(r));
+  const mutable = report.assets.filter((a) => !SHA.test(a.requestedRef));
+  const at = (l) => `${l.source}\0${l.file}\0${l.line}`;
+  const incomplete = report.findings.filter((f) => f.code === "incomplete");
+  const reasons = new Map(unchecked.map((repo) => {
+    const spots = new Set(v.byRepo.get(repo).flatMap((a) => a.locations).map(at));
+    return [repo, { spots, finding: incomplete.find((f) => spots.has(at(f))) }];
+  }));
+  const claimed = new Set([...reasons.values()].flatMap((x) => [...x.spots]));
+  const blockers = incomplete.filter((f) => !claimed.has(at(f)));
+  const render = (limit, locs) => {
+    const lines = [
+      DASHBOARD,
+      "## OSM Actions Dashboard",
+      "",
+      header(report, v, ctx),
+      "",
+      `_Updated ${report.finishedAt} by osm-action. Edits to this issue are overwritten on the next scan._`,
+      ""
+    ];
+    lines.push(`### 🚩 Flagged by OpenSourceMalware (${flagged.length})`, "");
+    if (!flagged.length) lines.push("None.", "");
+    for (const repo of flagged.slice(0, limit)) {
+      const verdict = v.verdicts.get(repo);
+      const issue = tracking.get(repo);
+      lines.push(`- ${code(repo)}${verdict.reportUrl ? ` — [OSM report](${linkTarget(verdict.reportUrl)})` : ""}` + (issue ? ` · ${issue.acknowledged ? "acknowledged in" : "tracked in"} #${issue.number}` : ""));
+      for (const asset of v.byRepo.get(repo)) lines.push(
+        `  - ${code(`${uses(asset)}@${asset.requestedRef}`)}`,
+        ...places(asset.locations, v.target, locs, "    ")
+      );
+    }
+    if (flagged.length) lines.push("");
+    lines.push(`### ⚠️ Not pinned to a commit SHA (${mutable.length})`, "");
+    if (!mutable.length) lines.push("None.", "");
+    for (const asset of mutable.slice(0, limit)) {
+      lines.push(
+        `- ${code(`${uses(asset)}@${asset.requestedRef}`)}` + (asset.resolvedSha ? ` → pin to ${code(`${uses(asset)}@${asset.resolvedSha} # ${asset.requestedRef}`)}` : " (could not be resolved)"),
+        ...places(asset.locations, v.target, locs)
+      );
+    }
+    if (mutable.length > limit) lines.push(`- …and ${mutable.length - limit} more (see the JSON report)`);
+    if (mutable.length) lines.push("");
+    lines.push(`### ❔ Could not be checked (${unchecked.length + blockers.length})`, "");
+    if (!unchecked.length && !blockers.length) lines.push("None.", "");
+    for (const repo of unchecked.slice(0, limit)) {
+      const state = v.verdicts.get(repo)?.state;
+      const detail = reasons.get(repo)?.finding?.message;
+      lines.push(`- ${code(repo)} — ${state === "private" ? "private repository; its identity is not sent to OSM" : state === "error" ? "the OSM lookup failed" : "the dependency could not be resolved or inspected"}` + (detail && state !== "private" ? `: ${code(detail)}` : ""));
+    }
+    for (const finding of blockers.slice(0, limit)) {
+      lines.push(`- ${where(finding, v.target)} — ${code(finding.message)}`);
+    }
+    if (unchecked.length > limit || blockers.length > limit) lines.push("- …more in the JSON report");
+    if (unchecked.length || blockers.length) lines.push("");
+    lines.push(`### ✅ No OpenSourceMalware match (${clean.length})`, "");
+    if (!clean.length) lines.push("None.", "");
+    for (const repo of clean.slice(0, limit)) {
+      const assets = v.byRepo.get(repo);
+      const pins = [...new Set(assets.map((a) => a.resolvedSha ? short(a.resolvedSha) : a.requestedRef))];
+      const count = assets.reduce((n, a) => n + a.locations.length, 0);
+      lines.push(`- ${code(repo)} @ ${pins.map(code).join(", ")} (${count} ${count === 1 ? "use" : "uses"})`);
+    }
+    if (clean.length > limit) lines.push(`- …and ${clean.length - limit} more (see the JSON report)`);
+    return lines;
+  };
+  const footer = [
+    "",
+    "<details><summary>About this dashboard</summary>",
+    "",
+    "osm-action checks every repository behind the GitHub Actions and reusable workflows this repository uses, including nested dependencies, against OpenSourceMalware.",
+    "A flag is repository-level threat intelligence, not a verdict on the pinned commit. No match does not establish that code is safe.",
+    "Each flagged repository gets its own issue, which closes automatically once it is no longer used or flagged. Closing one as **not planned** acknowledges it: it is not reopened, but scans keep failing while the dependency remains.",
+    "",
+    "</details>",
+    ""
+  ];
+  for (const [limit, locs] of [[200, 5], [50, 3], [10, 1]]) {
+    const body = [...render(limit, locs), ...footer].join("\n");
+    if (body.length <= MAX_BODY) return body;
+  }
+  return fit(render(0, 0), footer);
+}
+function flagBody(report, repo, ctx) {
+  const v = view(report);
+  const verdict = v.verdicts.get(repo);
+  const lines = [
+    flagMarker(repo),
+    `## 🚩 OpenSourceMalware flags ${code(repo)}`,
+    "",
+    `OpenSourceMalware has a report for this repository${verdict?.reportUrl ? `: [OSM report](${linkTarget(verdict.reportUrl)})` : "."}`,
+    `It is a GitHub Actions dependency of this repository. ${header(report, v, ctx)}.`,
+    "",
+    "### Where it is used",
+    ""
+  ];
+  for (const asset of (v.byRepo.get(repo) ?? []).slice(0, 50)) {
+    lines.push(`- ${code(`${uses(asset)}@${asset.requestedRef}`)}${asset.resolvedSha ? ` (commit ${code(short(asset.resolvedSha))})` : ""}`);
+    for (const loc of asset.locations.slice(0, 20)) {
+      lines.push(`  - used in ${where(loc, v.target)}`);
+      if (loc.chain.length > 1) lines.push(`    - via ${loc.chain.map(code).join(" → ")}`);
+    }
+  }
+  return fit(lines, [
+    "",
+    "### What to do",
+    "",
+    "1. Read the OSM report and decide whether it applies to the pinned commit.",
+    "2. Remove or replace this dependency in every location above.",
+    "3. If workflows already ran it, treat secrets and tokens available to those jobs as exposed and rotate them.",
+    "",
+    "This issue closes automatically once the repository is no longer used or flagged. Closing it as **not planned** acknowledges the risk: it will not be reopened, but scans keep failing while the dependency remains.",
+    ""
+  ]);
+}
+async function issueSkipReason(env, scanned, defaultBranch) {
+  if (!env.event || !ISSUE_EVENTS.includes(env.event)) {
+    return `Issue reporting runs only on ${ISSUE_EVENTS.join(", ")} events`;
+  }
+  if (!env.repository || repository(env.repository) !== repository(scanned)) {
+    return "Issue reporting runs only when the scanned repository is the workflow repository";
+  }
+  if (env.ref !== `refs/heads/${await defaultBranch()}`) return "Issue reporting runs only on the default branch";
+}
+var IssueSync = class {
+  constructor(token, repo, http = new Http()) {
+    this.token = token;
+    this.repo = repo;
+    this.http = http;
+    this.repo = repository(repo);
+  }
+  token;
+  repo;
+  http;
+  call(path, write) {
+    return this.http.json(new URL(`https://api.github.com/repos/${this.repo}${path}`), this.token, 8e6, write);
+  }
+  async defaultBranch() {
+    const meta = await this.call("");
+    if (!object(meta) || typeof meta.default_branch !== "string" || !meta.default_branch) {
+      throw new ScanError("Repository default branch is unavailable");
+    }
+    return meta.default_branch;
+  }
+  async ensureLabel() {
+    try {
+      await this.call(`/labels/${LABEL}`);
+      return;
+    } catch (error) {
+      if (!(error instanceof ScanError) || error.status !== 404) throw error;
+    }
+    try {
+      await this.call("/labels", { method: "POST", body: {
+        name: LABEL,
+        color: "b60205",
+        description: "Maintained by osm-action: GitHub Actions dependency intelligence"
+      } });
+    } catch (error) {
+      if (!(error instanceof ScanError) || error.status !== 422) throw error;
+    }
+  }
+  async issues() {
+    const found = [];
+    for (let page = 1; ; page++) {
+      if (page > MAX_PAGES) throw new ScanError(`More than ${MAX_PAGES * 100} ${LABEL} issues; close or relabel old ones`);
+      const items = await this.call(`/issues?labels=${LABEL}&state=all&sort=created&direction=asc&per_page=100&page=${page}`);
+      if (!Array.isArray(items)) throw new ScanError("Invalid GitHub issue list response");
+      for (const item of items) {
+        if (!object(item) || "pull_request" in item) continue;
+        if (typeof item.number !== "number" || !Number.isSafeInteger(item.number) || typeof item.html_url !== "string" || item.state !== "open" && item.state !== "closed") throw new ScanError("Invalid GitHub issue response");
+        found.push({
+          number: item.number,
+          open: item.state === "open",
+          url: item.html_url,
+          reason: typeof item.state_reason === "string" ? item.state_reason : null,
+          body: typeof item.body === "string" ? item.body : ""
+        });
+      }
+      if (items.length < 100) return found.sort((a, b) => a.number - b.number);
+    }
+  }
+  async create(title, body) {
+    const item = await this.call("/issues", { method: "POST", body: { title, body, labels: [LABEL] } });
+    if (!object(item) || typeof item.number !== "number" || typeof item.html_url !== "string") {
+      throw new ScanError("Invalid GitHub issue response");
+    }
+    return { number: item.number, open: true, reason: null, body, url: item.html_url };
+  }
+  update(issue, fields) {
+    return this.call(`/issues/${issue.number}`, { method: "PATCH", body: fields });
+  }
+  comment(issue, body) {
+    return this.call(`/issues/${issue.number}/comments`, { method: "POST", body: { body } });
+  }
+  /**
+   * Close all but the oldest open issue in a group created by concurrent runs. Superseded issues
+   * lose their marker, so they never count as the group's latest closed (or acknowledged) issue.
+   */
+  async dedupe(group) {
+    const open = group.filter((x) => x.open);
+    for (const extra of open.slice(1)) {
+      await this.update(extra, {
+        state: "closed",
+        state_reason: "completed",
+        body: `${SUPERSEDED}
+Superseded by #${open[0].number}.
+`
+      });
+    }
+    return open[0];
+  }
+  async sync(report, ctx) {
+    await this.ensureLabel();
+    const existing = await this.issues();
+    const outcome = { dashboard: "", opened: [], closed: [] };
+    const v = view(report);
+    const flagged = [...new Set(report.verdicts.filter((x) => x.state === "flagged-repository").map((x) => x.repository))].sort();
+    const sha = v.scanned ? code(short(v.scanned.sha)) : code(report.target);
+    const byFlag = /* @__PURE__ */ new Map();
+    for (const issue of existing) {
+      const repo = FLAG.exec(issue.body)?.[1];
+      if (repo) byFlag.set(repo, [...byFlag.get(repo) ?? [], issue]);
+    }
+    const tracking = /* @__PURE__ */ new Map();
+    for (const repo of flagged) {
+      const group = byFlag.get(repo) ?? [];
+      const title = `🚩 OpenSourceMalware flags ${repo}`;
+      const body2 = flagBody(report, repo, ctx);
+      const open = await this.dedupe(group);
+      const latestClosed = group.filter((x) => !x.open).at(-1);
+      if (open) {
+        await this.update(open, { title, body: body2 });
+        tracking.set(repo, { number: open.number, acknowledged: false });
+      } else if (latestClosed?.reason === "not_planned") {
+        tracking.set(repo, { number: latestClosed.number, acknowledged: true });
+      } else if (latestClosed) {
+        await this.update(latestClosed, { title, body: body2, state: "open", state_reason: "reopened" });
+        await this.comment(latestClosed, `Detected again in the scan of ${sha}.`);
+        tracking.set(repo, { number: latestClosed.number, acknowledged: false });
+        outcome.opened.push(latestClosed.number);
+      } else {
+        const created = await this.create(title, body2);
+        tracking.set(repo, { number: created.number, acknowledged: false });
+        outcome.opened.push(created.number);
+      }
+    }
+    for (const [repo, group] of byFlag) {
+      if (flagged.includes(repo)) continue;
+      const state = report.verdicts.find((x) => x.repository === repo)?.state;
+      const gone = !v.byRepo.has(repo) && report.complete;
+      if (state !== "no-verified-match" && !gone) continue;
+      for (const issue of group.filter((x) => x.open)) {
+        await this.comment(issue, gone ? `No longer used as of the scan of ${sha}. Closing.` : `OpenSourceMalware no longer flags this repository as of the scan of ${sha}. Closing.`);
+        await this.update(issue, { state: "closed", state_reason: "completed" });
+        outcome.closed.push(issue.number);
+      }
+    }
+    const dashboards = existing.filter((x) => IS_DASHBOARD.test(x.body));
+    const body = dashboardBody(report, ctx, tracking);
+    const dashboard = await this.dedupe(dashboards) ?? dashboards[0];
+    if (dashboard) {
+      await this.update(dashboard, { title: "OSM Actions Dashboard", body });
+      outcome.dashboard = dashboard.url;
+    } else outcome.dashboard = (await this.create("OSM Actions Dashboard", body)).url;
+    return outcome;
+  }
+};
+
 // src/action.ts
 function input(name) {
   return process.env[`INPUT_${name.toUpperCase()}`] ?? "";
@@ -8017,6 +8357,7 @@ async function main() {
   const output = process.env.GITHUB_OUTPUT;
   const stepSummary = process.env.GITHUB_STEP_SUMMARY;
   if (!temp || !output || !stepSummary) throw new ScanError("Missing Actions runtime paths; run this inside GitHub Actions");
+  const createIssues = boolean("create-issues", false);
   const github = new GitHub(input("github-token"));
   const osm = new OSM(token);
   const source = (await github.resolve(repo, sha)).source;
@@ -8036,6 +8377,34 @@ checked-repositories=${report.coverage.checkedRepositories}
 `);
   for (const annotation of annotations(report)) console.log(annotation);
   process.exitCode = exitCode(report);
+  if (createIssues) await reportIssues(report, repo, output);
+}
+async function reportIssues(report, scanned, output) {
+  try {
+    const own = process.env.GITHUB_REPOSITORY ?? "";
+    const sync = new IssueSync(input("github-token"), own || scanned);
+    const skip = await issueSkipReason(
+      { event: process.env.GITHUB_EVENT_NAME, repository: own, ref: process.env.GITHUB_REF },
+      scanned,
+      () => sync.defaultBranch()
+    );
+    if (skip) {
+      console.log(`::notice::${commandData(`${skip}; no issues were changed.`)}`);
+      return;
+    }
+    const runId = process.env.GITHUB_RUN_ID ?? "";
+    const outcome = await sync.sync(report, {
+      repository: own,
+      .../^\d+$/.test(runId) ? { runUrl: `https://github.com/${repository(own)}/actions/runs/${runId}` } : {}
+    });
+    await (0, import_promises.appendFile)(output, `dashboard-issue=${outcome.dashboard}
+`);
+    console.log(`OSM Actions Dashboard: ${outcome.dashboard}`);
+  } catch (error) {
+    const reason = safeErrorMessage(error) ?? "unexpected error";
+    console.log(`::error::${commandData(`Issue reporting failed: ${reason}. The workflow needs "permissions: issues: write". The scan result is unchanged.`)}`);
+    if (!process.exitCode) process.exitCode = 2;
+  }
 }
 main().catch((error) => {
   const reason = safeErrorMessage(error) ?? "Verify the explicit candidate SHA, credentials, permissions, and API access";

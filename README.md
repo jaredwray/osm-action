@@ -14,6 +14,7 @@ The scanner reads all workflow files at the specified commit and checks the publ
 - Fails incomplete scans: missing credentials, API outages, invalid YAML, inaccessible dependencies, and exceeded limits never become a pass.
 - Deduplicates repository lookups per run and paces OSM requests at approximately 28/minute.
 - Emits a JSON inventory, job summary, annotations, content hashes, and explicit coverage gaps.
+- Optionally maintains an **OSM Actions Dashboard** issue listing every action the repository uses, and opens one issue per action OpenSourceMalware flags.
 - Keeps private dependency identities out of OSM requests; their reputation checks remain incomplete.
 
 This is repository intelligence, not code or package malware analysis. A flagged repository does not prove the selected commit is malicious; a no-match does not establish safety. Keep [zizmor](https://docs.zizmor.sh/), dependency vulnerability checks, and runtime protection alongside it.
@@ -77,6 +78,7 @@ Keep [zizmor](https://docs.zizmor.sh/) enabled for workflow security checks alon
 | `sha` | required | Explicit full candidate commit SHA |
 | `require-sha` | `true` | Block mutable refs; false still reports warnings |
 | `fail-on-gaps` | `false` | Block encountered unsupported execution surfaces, including JavaScript action code and scripts |
+| `create-issues` | `false` | Maintain the dashboard issue and one issue per flagged action (see below); needs `issues: write` |
 
 There is no PR-controlled policy file, arbitrary API URL, persistent verdict cache, or blanket suppression. `fail-on-gaps: true` blocks typical workflows using JavaScript actions; it is a coverage requirement, not a deeper scanning mode.
 
@@ -86,8 +88,18 @@ There is no PR-controlled policy file, arbitrary API URL, persistent verdict cac
 | `complete` | Required repository checks completed; not all-code coverage |
 | `report-path` | JSON report under `RUNNER_TEMP` |
 | `checked-repositories` | Successfully checked unique public repositories |
+| `dashboard-issue` | Dashboard issue URL, when `create-issues` ran |
 
 Startup errors have no outputs and exit nonzero; the error names the cause (for example a missing token, rejected credentials, or an inaccessible commit) without echoing upstream responses, paths, or credentials. Findings are written before scan failure. Upload steps should use `if: always()` and check `report-path` is nonempty. Reports contain dependency identities; do not upload private inventories publicly.
+
+## Issues dashboard
+
+Set `create-issues: true` to turn each scan into GitHub Issues. Use the [dashboard template](examples/issues.yml): it scans on pushes to `main`, daily, and on demand, and grants the job `issues: write`.
+
+- **OSM Actions Dashboard**: one issue, rewritten on every scan, listing every action and reusable workflow the repository uses (including nested dependencies). It is grouped into 🚩 flagged by OpenSourceMalware, ⚠️ not pinned to a SHA (with the exact SHA to pin), ❔ could not be checked (with the reason), and ✅ no OSM match. Each entry links to the workflow lines that use it.
+- **One issue per flagged repository**: shows the OSM report, every place it is used and through which composite or reusable workflow, and what to do. It closes automatically once a scan confirms the repository is no longer used or no longer flagged, and reopens if it is detected again. An incomplete scan never closes it. Close it as **not planned** to acknowledge the risk: it will not be reopened, but the scan keeps failing while the dependency remains.
+
+Issues are written only for `push`, `schedule`, and `workflow_dispatch` runs on the default branch, when `repository` is the workflow's own repository. Other runs, including all pull request events, scan normally and leave issues untouched. Issue state never changes the scan result. If issues cannot be written, the job fails with an error naming the missing permission. Issues use the `osm-action` label (created if missing); use a `concurrency` group so that overlapping runs do not race. Scanned names and paths are rendered only inside code spans, so they cannot add links, mentions, or HTML to issues.
 
 ## Fork PRs and execution gates
 
@@ -97,7 +109,7 @@ After installation, require `OSM / repository-intelligence` through branch prote
 
 **Merge protection does not stop a concurrent build.** Use `needs: malware` for protected build/release jobs; `needs` does not span separate workflows. Keep fork builds isolated and unprivileged. Job containers/services start before steps, so scanning as the first step of the same job is insufficient.
 
-Other templates: [protected build](examples/trusted-build.yml), [scheduled rechecks](examples/scheduled.yml). Rechecks find newly reported threats without source changes. Check again before release. Example schedules are not enabled by this repository.
+Other templates: [protected build](examples/trusted-build.yml), [scheduled rechecks](examples/scheduled.yml), [issues dashboard](examples/issues.yml). Rechecks find newly reported threats without source changes. Check again before release. Example schedules are not enabled by this repository.
 
 ## CLI
 

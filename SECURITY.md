@@ -12,6 +12,10 @@ The scanner bounds source/response sizes, dependency counts, recursion, retries,
 
 Local CLI mode expects a trusted, stable filesystem snapshot. It does not provide filesystem isolation against a concurrent process replacing parent directories. Use API mode for untrusted PR inspection.
 
+## Issue reporting
+
+With `create-issues`, the Action writes issues to the workflow's own repository only for `push`, `schedule`, and `workflow_dispatch` runs on its default branch, when that repository is the scan target. Pull request events never write issues. Issue state, including issues closed as not planned, never changes the scan result. Scanned names, refs, and paths are rendered only inside Markdown code spans, and links are built from validated GitHub and OpenSourceMalware URLs, so dependency metadata cannot inject links, mentions, or HTML. Issue creation is never retried after a network or server error, to avoid duplicates. Dashboard issues list private dependency names, so enable this only where issue visibility matches repository visibility.
+
 ## Coverage limits
 
 A pass means no blocking findings within GitHub repository-intelligence scope. It does not certify commits or artifacts as malware-free. Root-project code, package malware, container reputation/contents, JavaScript and pre/post hooks, shell scripts, runtime downloads, and runner integrity are outside v0.1's analysis. `complete` refers to required repository checks. `fail-on-gaps` blocks encountered unsupported surfaces; it does not analyze them.

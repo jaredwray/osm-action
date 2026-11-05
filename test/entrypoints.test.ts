@@ -11,6 +11,7 @@ const A = 'a'.repeat(40);
 // identities, scans, writes outputs, and chooses its process exit code.
 const preload = `
 import { createHash } from 'node:crypto';
+import { appendFileSync } from 'node:fs';
 const A = 'a'.repeat(40), T = 'b'.repeat(40);
 const workflow = 'jobs:\\n  build:\\n    steps:\\n      - uses: demo/action@' + A + '\\n';
 const action = 'runs:\\n  using: node24\\n  main: index.js\\n';
@@ -24,6 +25,14 @@ globalThis.fetch = async (url, init) => {
       report_type: 'repository', resource_identifier: 'https://github.com/demo/action', details: { status: 'verified' } }));
   }
   if (u.hostname !== 'api.github.com') throw new Error('Unexpected host');
+  if (u.pathname.startsWith('/repos/demo/root/labels') || u.pathname.startsWith('/repos/demo/root/issues')) {
+    const method = init.method ?? 'GET';
+    if (method !== 'GET') appendFileSync(process.env.TEST_WRITES, method + ' ' + u.pathname + ' ' + init.body + '\\n');
+    if (process.env.TEST_ISSUES === 'denied' && method !== 'GET') return new Response('{"message":"secret"}', { status: 403 });
+    if (u.pathname.endsWith('/labels/osm-action')) return new Response('{}', { status: 404 });
+    if (method === 'GET') return new Response('[]');
+    return new Response(JSON.stringify({ number: 7, html_url: 'https://github.com/demo/root/issues/7' }), { status: 201 });
+  }
   const repo = u.pathname.includes('/demo/action') ? 'demo/action' : 'demo/root';
   const text = repo === 'demo/action' ? action : workflow;
   const path = repo === 'demo/action' ? 'action.yml' : '.github/workflows/ci.yml';
@@ -32,7 +41,7 @@ globalThis.fetch = async (url, init) => {
   else if (u.pathname.endsWith('/git/trees/' + T)) response = { truncated: false,
     tree: [{ path, sha: hash(text), type: 'blob', mode: '100644', size: Buffer.byteLength(text) }] };
   else if (u.pathname.includes('/git/blobs/')) response = { encoding: 'base64', content: Buffer.from(text).toString('base64') };
-  else response = { full_name: repo, private: false };
+  else response = { full_name: repo, private: false, default_branch: 'main' };
   return new Response(JSON.stringify(response));
 };
 `;
@@ -97,4 +106,40 @@ test('bundled CLI runs locally without executing a run step', async () => {
     const report = JSON.parse(result.stdout);
     assert.equal(report.result, 'pass'); assert.equal(report.coverage.gaps, 1);
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('bundled Action maintains issues only on trusted default-branch runs', async t => {
+  for (const [name, event, issues, expectedCode, expectWrites] of [
+    ['push', 'push', 'ok', 1, true], ['pull request', 'pull_request', 'ok', 1, false],
+    ['denied', 'push', 'denied', 2, true]] as const) {
+    await t.test(name, async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'osm-issues-'));
+      try {
+        const loader = join(dir, 'network.mjs'); await writeFile(loader, preload);
+        const writes = join(dir, 'writes'); await writeFile(writes, '');
+        const result = await runBundle('action', ['--import', loader], { ...process.env,
+          TEST_SCENARIO: issues === 'denied' ? 'pass' : 'flagged', TEST_ISSUES: issues, TEST_WRITES: writes,
+          INPUT_REPOSITORY: 'demo/root', INPUT_SHA: A, 'INPUT_OSM-TOKEN': 'test-secret-must-not-appear',
+          'INPUT_GITHUB-TOKEN': 'test-github-secret', 'INPUT_CREATE-ISSUES': 'true',
+          GITHUB_EVENT_NAME: event, GITHUB_REPOSITORY: 'demo/root', GITHUB_REF: 'refs/heads/main', GITHUB_RUN_ID: '42',
+          RUNNER_TEMP: dir, GITHUB_OUTPUT: join(dir, 'outputs'), GITHUB_STEP_SUMMARY: join(dir, 'summary') });
+        assert.equal(result.code, expectedCode, result.stderr);
+        const log = await readFile(writes, 'utf8');
+        const outputs = await readFile(join(dir, 'outputs'), 'utf8');
+        if (!expectWrites) {
+          assert.equal(log, ''); assert.match(result.stdout, /::notice::Issue reporting runs only on/);
+          assert.doesNotMatch(outputs, /dashboard-issue/);
+        } else if (issues === 'denied') {
+          assert.match(result.stdout, /::error::Issue reporting failed: GitHub API returned HTTP 403 .*issues: write/);
+          assert.match(outputs, /result=pass/);
+          assert.doesNotMatch(result.stdout.split('\n').filter(x => !x.startsWith('::add-mask::')).join('\n'), /secret/);
+        } else {
+          assert.match(log, /^POST \/repos\/demo\/root\/labels /m);
+          assert.equal(log.match(/^POST \/repos\/demo\/root\/issues /gm)!.length, 2);
+          assert.match(log, /OpenSourceMalware flags demo\/action/); assert.match(log, /actions\/runs\/42/);
+          assert.match(outputs, /^dashboard-issue=https:\/\/github\.com\/demo\/root\/issues\/7$/m);
+        }
+      } finally { await rm(dir, { recursive: true, force: true }); }
+    });
+  }
 });

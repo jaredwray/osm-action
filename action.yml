@@ -23,6 +23,9 @@ inputs:
   fail-on-gaps:
     description: Also block unsupported execution surfaces such as scripts and JavaScript action code
     default: 'false'
+  create-issues:
+    description: Maintain an "OSM Actions Dashboard" issue and one issue per flagged action. Runs only on push, schedule, or workflow_dispatch on the default branch, and needs issues write permission
+    default: 'false'
 outputs:
   result:
     description: pass, fail, or incomplete (absent if startup fails)
@@ -32,6 +35,8 @@ outputs:
     description: Absolute path to JSON report under RUNNER_TEMP
   checked-repositories:
     description: Number of successfully checked unique public repositories
+  dashboard-issue:
+    description: URL of the OSM Actions Dashboard issue (set only when create-issues ran)
 runs:
   using: node24
   main: dist/action.cjs

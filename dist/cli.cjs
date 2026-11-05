@@ -7428,11 +7428,12 @@ var Http = class {
   }
   fetcher;
   pause;
-  async json(url, token, limit = 2e6) {
+  async json(url, token, limit = 2e6, write) {
     const service = services[url.hostname];
-    if (url.protocol !== "https:" || !service || url.username || url.password || url.port) {
+    if (url.protocol !== "https:" || !service || url.username || url.password || url.port || write && service !== "GitHub") {
       throw new ScanError("Disallowed API destination");
     }
+    const replayable = write?.method !== "POST";
     for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
       const final = attempt === ATTEMPTS - 1;
       const backoff = 1e3 * 2 ** attempt;
@@ -7441,15 +7442,17 @@ var Http = class {
         response = await this.fetcher(url, {
           redirect: "error",
           signal: AbortSignal.timeout(2e4),
+          ...write ? { method: write.method, body: JSON.stringify(write.body) } : {},
           headers: {
             Accept: "application/json",
             "User-Agent": "osm-action/0.1.0",
+            ...write ? { "Content-Type": "application/json" } : {},
             ...token ? { Authorization: `Bearer ${token}` } : {},
             ...url.hostname === "api.github.com" ? { "X-GitHub-Api-Version": "2022-11-28" } : {}
           }
         });
       } catch {
-        if (!final) {
+        if (!final && replayable) {
           await this.pause(backoff);
           continue;
         }
@@ -7460,7 +7463,7 @@ var Http = class {
         body = await read(response, limit);
       } catch (error) {
         if (error instanceof ScanError) throw error;
-        if (!final) {
+        if (!final && replayable) {
           await this.pause(backoff);
           continue;
         }
@@ -7470,7 +7473,7 @@ var Http = class {
       const retryAfter = response.headers.get("retry-after");
       const githubLimited = service === "GitHub" && response.status === 403 && (remaining === "0" || retryAfter !== null);
       const throttled = response.status === 429 || githubLimited;
-      if ((throttled || response.status >= 500) && !final) {
+      if ((throttled || response.status >= 500 && replayable) && !final) {
         if (response.status === 429 && /daily|24 hours|24-hour/i.test(body)) {
           throw new ScanError(`${service} API daily quota exhausted`, 429);
         }
