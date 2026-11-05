@@ -7732,7 +7732,7 @@ var import_yaml = __toESM(require_dist(), 1);
 var defaultPolicy = { requireSha: true, failOnGaps: false, maxDepth: 10, maxAssets: 100, maxDocuments: 300 };
 var SAME_REVISION = {
   repository: /^\$\{\{\s*github\.repository\s*\}\}$/,
-  ref: /^\$\{\{\s*(?:github\.sha|github\.event\.pull_request\.head\.sha)\s*\}\}$/
+  ref: /^\$\{\{\s*github\.sha\s*\}\}$/
 };
 var sameRevision = (key, value) => typeof value === "string" && SAME_REVISION[key].test(value.trim());
 async function scan(root, resolver, intel, policy = defaultPolicy) {

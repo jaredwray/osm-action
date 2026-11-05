@@ -7,10 +7,12 @@ import type { Resolver, Source } from './source.ts';
 
 export interface Policy { requireSha: boolean; failOnGaps: boolean; maxDepth: number; maxAssets: number; maxDocuments: number }
 export const defaultPolicy: Policy = { requireSha: true, failOnGaps: false, maxDepth: 10, maxAssets: 100, maxDocuments: 300 };
-// Checkout inputs that name the same repository and revision as a default checkout.
+// Checkout inputs that always name the same repository and revision as a default checkout.
+// The PR head SHA is excluded: under pull_request the default revision is the merge commit,
+// so the head can carry different local-action metadata than the scanned revision.
 const SAME_REVISION: Record<string, RegExp> = {
   repository: /^\$\{\{\s*github\.repository\s*\}\}$/,
-  ref: /^\$\{\{\s*(?:github\.sha|github\.event\.pull_request\.head\.sha)\s*\}\}$/
+  ref: /^\$\{\{\s*github\.sha\s*\}\}$/
 };
 const sameRevision = (key: string, value: unknown) => typeof value === 'string' && SAME_REVISION[key]!.test(value.trim());
 export async function scan(root: Source, resolver: Resolver, intel: Intelligence,

@@ -219,7 +219,7 @@ test('exponential alias expansion and merge keys are rejected', async t => {
 });
 test('checkout of the triggering revision by expression establishes the local workspace', async t => {
   for (const [inputs, expected] of [['ref: ${{ github.sha }}', 'pass'],
-    ['ref: ${{ github.event.pull_request.head.sha }}', 'pass'],
+    ['ref: ${{ github.event.pull_request.head.sha }}', 'incomplete'],
     ['repository: ${{ github.repository }}\n          ref: ${{github.sha}}', 'pass'],
     ['ref: ${{ github.head_ref }}', 'incomplete'], ['repository: ${{ github.event.pull_request.head.repo.full_name }}', 'incomplete'],
     ['ref: ${{ github.sha }}\n          path: elsewhere', 'incomplete']] as const) {
