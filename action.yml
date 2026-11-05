@@ -1,0 +1,37 @@
+name: OSM Action
+description: Check GitHub Actions dependency repositories against OpenSourceMalware intelligence
+author: Jared Wray
+branding:
+  icon: shield
+  color: red
+inputs:
+  osm-token:
+    description: Your OpenSourceMalware API token; required even on fork scans
+    required: true
+  github-token:
+    description: GitHub token for reading the candidate and action metadata
+    default: ${{ github.token }}
+  repository:
+    description: Explicit owner/repository containing the candidate commit
+    required: true
+  sha:
+    description: Explicit full candidate commit SHA; use PR head SHA for pull_request_target
+    required: true
+  require-sha:
+    description: Block mutable action and reusable workflow refs
+    default: 'true'
+  fail-on-gaps:
+    description: Also block unsupported execution surfaces such as scripts and JavaScript action code
+    default: 'false'
+outputs:
+  result:
+    description: pass, fail, or incomplete (absent if startup fails)
+  complete:
+    description: Whether all required repository checks completed; not a measure of all-code coverage
+  report-path:
+    description: Absolute path to JSON report under RUNNER_TEMP
+  checked-repositories:
+    description: Number of successfully checked unique public repositories
+runs:
+  using: node24
+  main: dist/action.cjs

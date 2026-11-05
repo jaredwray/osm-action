@@ -1,0 +1,22 @@
+{
+  "name": "osm-action",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Known-malware repository intelligence for GitHub Actions",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --experimental-transform-types --test test/*.test.ts",
+    "check": "npm run typecheck && npm test",
+    "check:dist": "npm run build && git diff --exit-code -- dist"
+  },
+  "dependencies": { "yaml": "2.9.1" },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  }
+}
