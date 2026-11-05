@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { LineCounter, parseDocument } from 'yaml';
+import { isAlias, isCollection, LineCounter, parseDocument } from 'yaml';
 import { filePath, object, repository, ScanError, SHA } from './model.ts';
 import type { Asset, Location, Report } from './model.ts';
 import type { Intelligence } from './osm.ts';
@@ -7,6 +7,12 @@ import type { Resolver, Source } from './source.ts';
 
 export interface Policy { requireSha: boolean; failOnGaps: boolean; maxDepth: number; maxAssets: number; maxDocuments: number }
 export const defaultPolicy: Policy = { requireSha: true, failOnGaps: false, maxDepth: 10, maxAssets: 100, maxDocuments: 300 };
+// Checkout inputs that name the same repository and revision as a default checkout.
+const SAME_REVISION: Record<string, RegExp> = {
+  repository: /^\$\{\{\s*github\.repository\s*\}\}$/,
+  ref: /^\$\{\{\s*(?:github\.sha|github\.event\.pull_request\.head\.sha)\s*\}\}$/
+};
+const sameRevision = (key: string, value: unknown) => typeof value === 'string' && SAME_REVISION[key]!.test(value.trim());
 export async function scan(root: Source, resolver: Resolver, intel: Intelligence,
   policy: Policy = defaultPolicy): Promise<Report> {
   const report: Report = { schemaVersion: 1, scannerVersion: '0.1.0', startedAt: new Date().toISOString(), finishedAt: '',
@@ -18,20 +24,30 @@ export async function scan(root: Source, resolver: Resolver, intel: Intelligence
         'Runner integrity', 'Commit authenticity and fork-network impostor commits'] } };
   const assets = new Map<string, Asset>();
   const visibility = new Map<string, boolean>();
+  const canonical = new Map<string, string>();
+  // Documents already traversed in a given role. Callers stay recorded in asset locations.
+  const visited = new Set<string>();
+  const seen = new Set<string>();
   const contents = new Map<string, Promise<string | undefined>>();
   let documents = 0;
   let nodes = 0;
   const consumeNode = () => {
     if (++nodes > 3000) throw new Error('Workflow node budget exhausted');
   };
+  /** Records a finding once per code, level, location, and message; returns whether it was new. */
   const add = (code: string, message: string, loc: Location, level: 'warning' | 'error' = 'error') => {
+    const key = JSON.stringify([code, level, loc.source, loc.file, loc.line, message]);
+    if (seen.has(key)) return false;
+    seen.add(key);
     report.findings.push({ code, message, level, ...loc });
+    return true;
   };
   const incomplete = (message: string, loc: Location) => {
-    report.complete = false; report.coverage.unresolved++; add('incomplete', message, loc);
+    report.complete = false;
+    if (add('incomplete', message, loc)) report.coverage.unresolved++;
   };
   const gap = (message: string, loc: Location) => {
-    report.coverage.gaps++; add('coverage-gap', message, loc, policy.failOnGaps ? 'error' : 'warning');
+    if (add('coverage-gap', message, loc, policy.failOnGaps ? 'error' : 'warning')) report.coverage.gaps++;
   };
   async function read(source: Source, path: string) {
     const key = `${source.id}:${path}`;
@@ -83,6 +99,7 @@ export async function scan(root: Source, resolver: Resolver, intel: Intelligence
       const resolved = await resolver.resolve(repo, ref);
       asset.resolvedSha = resolved.sha;
       visibility.set(repo, resolved.private);
+      canonical.set(repo, resolved.name);
       if (kind === 'workflow') await visit(resolved.source, path, kind, loc.chain, stack, false);
       else await action(resolved.source, path, loc.chain, stack, workspaceKnown);
     } catch (error) { incomplete(error instanceof ScanError ? `Dependency inspection failed: ${error.message}` :
@@ -112,9 +129,14 @@ export async function scan(root: Source, resolver: Resolver, intel: Intelligence
     const identity = `${source.id}:${path}`;
     const chain = [...ancestors, identity];
     const base: Location = { source: source.id, file: path, line: 1, chain };
-    if (stack.includes(identity) || stack.length >= policy.maxDepth || ++documents > policy.maxDocuments) {
+    if (stack.includes(identity)) { incomplete('Dependency cycle, depth limit, or document budget reached', base); return; }
+    // Workspace knowledge changes how step-level local actions resolve, so it is part of the key.
+    const visitKey = JSON.stringify([kind, workspaceKnown, identity]);
+    if (visited.has(visitKey)) return;
+    if (stack.length >= policy.maxDepth || ++documents > policy.maxDocuments) {
       incomplete('Dependency cycle, depth limit, or document budget reached', base); return;
     }
+    visited.add(visitKey);
     const nextStack = [...stack, identity];
     try {
       const text = await read(source, path);
@@ -122,11 +144,18 @@ export async function scan(root: Source, resolver: Resolver, intel: Intelligence
       const lines = new LineCounter();
       const doc = parseDocument(text, { lineCounter: lines, uniqueKeys: true, strict: true, schema: 'core' });
       if (doc.errors.length || doc.warnings.length) throw new Error('Invalid YAML');
-      const data: unknown = doc.toJS({ maxAliasCount: 0 });
+      // GitHub supports anchors and aliases (not merge keys). The yaml library's
+      // alias budget rejects exponential expansion.
+      const data: unknown = doc.toJS({ maxAliasCount: 100 });
       if (!object(data)) throw new Error('Expected YAML mapping');
       const at = (keys: (string | number)[]): Location => {
-        const node = doc.getIn(keys, true) as { range?: number[] } | undefined;
-        return { ...base, line: node?.range?.[0] === undefined ? 1 : lines.linePos(node.range[0]).line };
+        let node: unknown = doc.contents;
+        for (const key of keys) {
+          if (isAlias(node)) node = node.resolve(doc);
+          node = isCollection(node) ? node.get(key, true) : undefined;
+        }
+        const start = (node as { range?: number[] } | undefined)?.range?.[0];
+        return { ...base, line: start === undefined ? 1 : lines.linePos(start).line };
       };
       async function steps(value: unknown, keys: (string | number)[], initialWorkspace: boolean) {
         if (!Array.isArray(value)) throw new Error('Expected steps array');
@@ -140,7 +169,8 @@ export async function scan(root: Source, resolver: Resolver, intel: Intelligence
             if (typeof step.uses === 'string' && /^actions\/checkout@/.test(step.uses)) {
               const inputs = step.with;
               const defaultSource = inputs === undefined || (object(inputs) &&
-                !['repository', 'ref', 'path', 'sparse-checkout'].some(k => k in inputs));
+                !['path', 'sparse-checkout'].some(k => k in inputs) &&
+                ['repository', 'ref'].every(k => !(k in inputs) || sameRevision(k, inputs[k])));
               // Disabled or dynamic cleanup may preserve untracked action.yml
               // files created by earlier code, overriding tracked action.yaml.
               const cleansWorkspace = inputs === undefined || (object(inputs) &&
@@ -200,11 +230,12 @@ export async function scan(root: Source, resolver: Resolver, intel: Intelligence
       continue;
     }
     try {
-      const verdict = await intel.check(repo);
+      const verdict = await intel.check(canonical.get(repo) ?? repo);
       report.verdicts.push(verdict);
       report.coverage.checkedRepositories++;
       if (verdict.state === 'flagged-repository') for (const loc of locations) {
-        add('flagged-repository', 'OSM flags this repository. Applicability to the selected commit needs review; this is not a commit-level malware verdict.', loc);
+        add('flagged-repository', 'OSM flags this repository. Applicability to the selected commit needs review; this is not a commit-level malware verdict.' +
+          (verdict.reportUrl ? ` OSM report: ${verdict.reportUrl}` : ''), loc);
       }
     } catch (error) {
       report.verdicts.push({ repository: repo, state: 'error', checkedAt: new Date().toISOString() });

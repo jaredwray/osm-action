@@ -14,12 +14,13 @@ class Memory implements Source {
 }
 const workflow = (uses: string) => `on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: ${uses}\n`;
 async function fixture(files: Record<string, string>, remotes: Record<string, Record<string, string>>,
-  flagged: string[] = [], policy: Partial<Policy> = {}, privateRepos: string[] = []) {
+  flagged: string[] = [], policy: Partial<Policy> = {}, privateRepos: string[] = [],
+  canonicalNames: Record<string, string> = {}) {
   const calls: string[] = [];
   const resolver: Resolver = { async resolve(repo, ref) {
     if (!remotes[repo]) throw new Error('Unavailable');
     return { source: new Memory(`${repo}@${ref}`, remotes[repo]), sha: /^[a-f\d]{40}$/.test(ref) ? ref : A,
-      private: privateRepos.includes(repo) };
+      private: privateRepos.includes(repo), name: canonicalNames[repo] ?? repo };
   } };
   const intel: Intelligence = { async check(repo) { calls.push(repo); return { repository: repo,
     state: flagged.includes(repo) ? 'flagged-repository' : 'no-verified-match', checkedAt: '2026-11-05T00:00:00Z' }; } };
@@ -76,7 +77,7 @@ test('private repository names never reach OSM', async () => {
 });
 test('API failure is an incomplete scan', async () => {
   const report = await scan(new Memory('root', { '.github/workflows/a.yml': workflow(`good/action@${A}`) }), {
-    async resolve() { return { source: new Memory('good', { 'action.yml': js }), sha: A, private: false }; }
+    async resolve() { return { source: new Memory('good', { 'action.yml': js }), sha: A, private: false, name: 'good/action' }; }
   }, { async check(): Promise<Verdict> { throw new Error('token=secret'); } });
   assert.equal(report.result, 'incomplete'); assert.doesNotMatch(JSON.stringify(report), /secret/);
 });
@@ -90,7 +91,7 @@ test('dependency budgets fail closed', async () => {
   const { report } = await fixture({ '.github/workflows/a.yml': workflow(`good/action@${A}`) }, {}, [], { maxAssets: 0 });
   assert.equal(report.result, 'incomplete');
 });
-test('invalid YAML, duplicates, custom tags, aliases, and malformed jobs are rejected', async t => {
+test('invalid YAML, duplicates, custom tags, mistyped aliases, and malformed jobs are rejected', async t => {
   for (const content of ['jobs: [', 'jobs: {}\njobs: {}', 'jobs: !!javascript/function hi',
     'x: &a [1]\njobs: *a', 'jobs: 42', 'jobs: {}', 'jobs:\n  a:\n    steps:\n      - uses: 3',
     'jobs:\n  a:\n    steps:\n      - run: hi\n        uses: good/action@v1']) {
@@ -175,4 +176,69 @@ test('action metadata takes precedence over a Dockerfile fallback', async () => 
   const { report } = await fixture({ '.github/workflows/ci.yml': workflow(`container/action@${A}`) },
     { 'container/action': { 'action.yml': 'runs: [', Dockerfile: 'FROM scratch\n' } });
   assert.equal(report.result, 'incomplete');
+});
+
+test('a composite shared by many workflows is traversed once without exhausting budgets', async () => {
+  const files: Record<string, string> = {};
+  for (let i = 0; i < 60; i++) files[`.github/workflows/w${i}.yml`] =
+    `jobs:\n  a:\n    steps:\n      - uses: shared/composite@${A}\n      - run: echo ${i}\n`;
+  files['.github/workflows/w59.yml'] += `      - uses: bad/action@${B}\n`;
+  const { report } = await fixture(files, {
+    'shared/composite': { 'action.yml': `runs:\n  using: composite\n  steps:\n    - uses: good/action@${A}\n    - run: echo shared\n      shell: bash\n` },
+    'good/action': { 'action.yml': js }, 'bad/action': { 'action.yml': js }
+  }, ['bad/action']);
+  assert.equal(report.result, 'fail'); assert.equal(report.complete, true);
+  assert.equal(report.findings.filter(x => x.source === `shared/composite@${A}`).length, 1);
+  assert.equal(report.findings.filter(x => x.source === `good/action@${A}`).length, 1);
+  assert.equal(report.assets.find(x => x.repository === 'shared/composite')!.locations.length, 60);
+  assert.ok(report.findings.some(x => x.code === 'flagged-repository' && x.file === '.github/workflows/w59.yml'));
+});
+test('a document reached with a different workspace state is still traversed in that state', async () => {
+  const files = { '.github/workflows/a.yml': `jobs:\n  a:\n    steps:\n      - uses: shared/composite@${A}\n`,
+    '.github/workflows/b.yml': `jobs:\n  a:\n    steps:\n      - uses: actions/checkout@${A}\n      - uses: shared/composite@${A}\n`,
+    'local/action.yml': js };
+  const remotes = { 'actions/checkout': { 'action.yml': js },
+    'shared/composite': { 'action.yml': 'runs:\n  using: composite\n  steps:\n    - uses: ./local\n' } };
+  const { report } = await fixture(files, remotes);
+  assert.equal(report.result, 'incomplete');
+  assert.ok(report.files.some(x => x.source === 'root' && x.path === 'local/action.yml'));
+});
+test('YAML anchors and aliases are supported with accurate lines', async () => {
+  const text = `on: push\nx-os: &os ubuntu-latest\nx-steps: &steps\n  - uses: bad/action@${B}\njobs:\n  a:\n    runs-on: *os\n    steps: *steps\n`;
+  const { report } = await fixture({ '.github/workflows/a.yml': text }, { 'bad/action': { 'action.yml': js } }, ['bad/action']);
+  assert.equal(report.result, 'fail'); assert.equal(report.complete, true);
+  assert.equal(report.findings.find(x => x.code === 'flagged-repository')!.line, 4);
+});
+test('exponential alias expansion and merge keys are rejected', async t => {
+  const bomb = 'a: &a [x, x, x, x, x, x, x, x, x, x]\n' + Array.from({ length: 8 }, (_, i) =>
+    `${String.fromCharCode(98 + i)}: &${String.fromCharCode(98 + i)} [${Array(10).fill(`*${String.fromCharCode(97 + i)}`).join(', ')}]`).join('\n') +
+    `\njobs:\n  a:\n    steps:\n      - run: echo\n`;
+  const merge = `x: &base\n  uses: good/action@${A}\njobs:\n  a:\n    steps:\n      - <<: *base\n`;
+  for (const [name, text] of [['bomb', bomb], ['merge', merge]] as const) await t.test(name, async () =>
+    assert.equal((await fixture({ '.github/workflows/a.yml': text }, { 'good/action': { 'action.yml': js } })).report.result, 'incomplete'));
+});
+test('checkout of the triggering revision by expression establishes the local workspace', async t => {
+  for (const [inputs, expected] of [['ref: ${{ github.sha }}', 'pass'],
+    ['ref: ${{ github.event.pull_request.head.sha }}', 'pass'],
+    ['repository: ${{ github.repository }}\n          ref: ${{github.sha}}', 'pass'],
+    ['ref: ${{ github.head_ref }}', 'incomplete'], ['repository: ${{ github.event.pull_request.head.repo.full_name }}', 'incomplete'],
+    ['ref: ${{ github.sha }}\n          path: elsewhere', 'incomplete']] as const) {
+    await t.test(inputs, async () => {
+      const files = { '.github/workflows/a.yml': `jobs:\n  a:\n    steps:\n      - uses: actions/checkout@${A}\n        with:\n          ${inputs}\n      - uses: ./local\n`,
+        'local/action.yml': js };
+      assert.equal((await fixture(files, { 'actions/checkout': { 'action.yml': js } })).report.result, expected);
+    });
+  }
+});
+test('OSM receives GitHub canonical repository casing', async () => {
+  const { calls } = await fixture({ '.github/workflows/a.yml': workflow(`mixed/action@${A}`) },
+    { 'mixed/action': { 'action.yml': js } }, [], {}, [], { 'mixed/action': 'Mixed/Action' });
+  assert.deepEqual(calls, ['Mixed/Action']);
+});
+test('flagged findings link the OSM report when provided', async () => {
+  const url = 'https://opensourcemalware.com/repository/https%3A%2F%2Fgithub.com%2Fbad%2Faction';
+  const report = await scan(new Memory('root', { '.github/workflows/a.yml': workflow(`bad/action@${A}`) }), {
+    async resolve() { return { source: new Memory('bad', { 'action.yml': js }), sha: A, private: false, name: 'bad/action' }; }
+  }, { async check(repo) { return { repository: repo, state: 'flagged-repository', checkedAt: '', reportUrl: url }; } });
+  assert.ok(report.findings.some(x => x.code === 'flagged-repository' && x.message.includes(url)));
 });

@@ -16,3 +16,22 @@ test('summary escapes HTML and annotations do not attribute upstream files to th
   assert.ok(!annotations(report)[0]!.includes('file='));
   assert.equal(annotations(report)[0]!.split('\n').length, 1);
 });
+
+test('blocking findings come first so truncation never hides them', () => {
+  const gap = (line: number) => ({ source: 'root', file: '.github/workflows/a.yml', line, chain: [], code: 'coverage-gap',
+    level: 'warning' as const, message: 'Shell execution is not inspected' });
+  const report: Report = { schemaVersion: 1, scannerVersion: '0.1.0', startedAt: '', finishedAt: '', target: 'root',
+    scope: 'github-repository-intelligence', result: 'fail', complete: true, assets: [], files: [],
+    verdicts: [{ repository: 'bad/action', state: 'flagged-repository', checkedAt: '',
+      reportUrl: 'https://opensourcemalware.com/repository/x"><script>' }],
+    coverage: { checkedRepositories: 1, unresolved: 0, gaps: 200, exclusions: [] },
+    findings: [...Array.from({ length: 200 }, (_, i) => gap(i + 1)), { source: 'root', file: '.github/workflows/a.yml',
+      line: 999, chain: [], code: 'flagged-repository', level: 'error', message: 'OSM flags this repository.' }] };
+  const text = summary(report);
+  assert.match(text, /### Flagged repositories/); assert.match(text, /<code>bad\/action<\/code>/);
+  assert.doesNotMatch(text, /<script>/);
+  assert.ok(text.indexOf('| flagged-repository |') < text.indexOf('| coverage-gap |'));
+  assert.match(text, /Showing the 100 most severe of 201 findings/);
+  assert.match(annotations(report)[0]!, /^::error file=.*title=flagged-repository::/);
+  assert.equal(report.findings.at(-1)!.code, 'flagged-repository');
+});

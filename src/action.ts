@@ -4,12 +4,12 @@ import { GitHub } from './source.ts';
 import { OSM } from './osm.ts';
 import { scan, defaultPolicy } from './scan.ts';
 import { annotations, commandData, exitCode, summary } from './report.ts';
-import { SHA } from './model.ts';
+import { safeErrorMessage, ScanError, SHA } from './model.ts';
 function input(name: string) { return process.env[`INPUT_${name.toUpperCase()}`] ?? ''; }
 function boolean(name: string, fallback: boolean) {
   const value = input(name);
   if (!value) return fallback;
-  if (!['true', 'false'].includes(value)) throw new Error('Invalid Boolean input');
+  if (!['true', 'false'].includes(value)) throw new ScanError(`Input ${name} must be true or false`);
   return value === 'true';
 }
 async function main() {
@@ -17,11 +17,11 @@ async function main() {
   if (token) console.log(`::add-mask::${commandData(token)}`);
   const repo = input('repository');
   const sha = input('sha');
-  if (!repo || !SHA.test(sha)) throw new Error('Explicit repository and full candidate SHA are required');
+  if (!repo || !SHA.test(sha)) throw new ScanError('Inputs repository and sha (a full 40-character commit SHA) are required');
   const temp = process.env.RUNNER_TEMP;
   const output = process.env.GITHUB_OUTPUT;
   const stepSummary = process.env.GITHUB_STEP_SUMMARY;
-  if (!temp || !output || !stepSummary) throw new Error('Missing Actions runtime paths');
+  if (!temp || !output || !stepSummary) throw new ScanError('Missing Actions runtime paths; run this inside GitHub Actions');
   const github = new GitHub(input('github-token'));
   const osm = new OSM(token);
   const source = (await github.resolve(repo, sha)).source;
@@ -35,7 +35,9 @@ async function main() {
   for (const annotation of annotations(report)) console.log(annotation);
   process.exitCode = exitCode(report);
 }
-main().catch(() => {
-  console.log('::error::OSM scan could not start or write its report. Verify the explicit candidate SHA, credentials, permissions, and API access. Scan is incomplete.');
+main().catch(error => {
+  // Only fixed project messages are shown; upstream bodies, paths, and credentials are never echoed.
+  const reason = safeErrorMessage(error) ?? 'Verify the explicit candidate SHA, credentials, permissions, and API access';
+  console.log(`::error::${commandData(`OSM scan could not start or write its report: ${reason}. Scan is incomplete.`)}`);
   process.exitCode = 2;
 });

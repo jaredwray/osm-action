@@ -40,13 +40,13 @@ var require_identity = __commonJS({
     var SCALAR = /* @__PURE__ */ Symbol.for("yaml.scalar");
     var SEQ = /* @__PURE__ */ Symbol.for("yaml.seq");
     var NODE_TYPE = /* @__PURE__ */ Symbol.for("yaml.node.type");
-    var isAlias = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === ALIAS;
+    var isAlias2 = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === ALIAS;
     var isDocument = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === DOC;
     var isMap = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === MAP;
     var isPair = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === PAIR;
     var isScalar = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === SCALAR;
     var isSeq = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === SEQ;
-    function isCollection(node) {
+    function isCollection2(node) {
       if (node && typeof node === "object")
         switch (node[NODE_TYPE]) {
           case MAP:
@@ -66,7 +66,7 @@ var require_identity = __commonJS({
         }
       return false;
     }
-    var hasAnchor = (node) => (isScalar(node) || isCollection(node)) && !!node.anchor;
+    var hasAnchor = (node) => (isScalar(node) || isCollection2(node)) && !!node.anchor;
     exports2.ALIAS = ALIAS;
     exports2.DOC = DOC;
     exports2.MAP = MAP;
@@ -75,8 +75,8 @@ var require_identity = __commonJS({
     exports2.SCALAR = SCALAR;
     exports2.SEQ = SEQ;
     exports2.hasAnchor = hasAnchor;
-    exports2.isAlias = isAlias;
-    exports2.isCollection = isCollection;
+    exports2.isAlias = isAlias2;
+    exports2.isCollection = isCollection2;
     exports2.isDocument = isDocument;
     exports2.isMap = isMap;
     exports2.isNode = isNode;
@@ -5625,7 +5625,7 @@ var require_cst = __commonJS({
     var DOCUMENT = "";
     var FLOW_END = "";
     var SCALAR = "";
-    var isCollection = (token) => !!token && "items" in token;
+    var isCollection2 = (token) => !!token && "items" in token;
     var isScalar = (token) => !!token && (token.type === "scalar" || token.type === "single-quoted-scalar" || token.type === "double-quoted-scalar" || token.type === "block-scalar");
     function prettyToken(token) {
       switch (token) {
@@ -5709,7 +5709,7 @@ var require_cst = __commonJS({
     exports2.DOCUMENT = DOCUMENT;
     exports2.FLOW_END = FLOW_END;
     exports2.SCALAR = SCALAR;
-    exports2.isCollection = isCollection;
+    exports2.isCollection = isCollection2;
     exports2.isScalar = isScalar;
     exports2.prettyToken = prettyToken;
     exports2.tokenType = tokenType;
@@ -7374,16 +7374,19 @@ function object(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 var SHA = /^[a-f0-9]{40}$/i;
-function repository(value) {
+function repositoryName(value) {
   if (!/^[a-z\d][a-z\d-]*\/[a-z\d_.-]+$/i.test(value) || value.split("/")[1] === "..") {
-    throw new Error("Invalid GitHub owner/repository identifier");
+    throw new ScanError("Invalid GitHub owner/repository identifier");
   }
-  return value.toLowerCase();
+  return value;
+}
+function repository(value) {
+  return repositoryName(value).toLowerCase();
 }
 function filePath(value) {
   const result = value.startsWith("./") ? value.slice(2) : value;
   if (!result || result.length > 1024 || /[\\\x00-\x1f\x7f]/.test(result) || result.split("/").some((p) => !p || p === "." || p === "..")) {
-    throw new Error("Invalid repository-relative path");
+    throw new ScanError("Invalid repository-relative path");
   }
   return result;
 }
@@ -7394,9 +7397,30 @@ var ScanError = class extends Error {
   }
   status;
 };
+var systemErrors = {
+  EEXIST: "Output file already exists",
+  ENOENT: "A required path does not exist",
+  EACCES: "Permission denied",
+  EPERM: "Permission denied"
+};
+function safeErrorMessage(error) {
+  if (error instanceof ScanError) return error.message;
+  const code = object(error) || error instanceof Error ? error.code : void 0;
+  if (typeof code !== "string") return;
+  if (code.startsWith("ERR_PARSE_ARGS_")) return "Invalid command-line arguments";
+  if (/^E[A-Z]+$/.test(code)) return systemErrors[code] ?? `System error ${code}`;
+}
 
 // src/http.ts
 var sleep = (ms) => new Promise((resolve2) => setTimeout(resolve2, ms));
+var ATTEMPTS = 3;
+var MAX_RETRY_DELAY = 6e4;
+var services = { "api.github.com": "GitHub", "api.opensourcemalware.com": "OpenSourceMalware" };
+var statusHints = {
+  401: "credentials were rejected",
+  403: "access denied",
+  404: "not found or not accessible with the supplied token"
+};
 var Http = class {
   constructor(fetcher = globalThis.fetch, pause = sleep) {
     this.fetcher = fetcher;
@@ -7405,14 +7429,18 @@ var Http = class {
   fetcher;
   pause;
   async json(url, token, limit = 2e6) {
-    if (url.protocol !== "https:" || !["api.github.com", "api.opensourcemalware.com"].includes(url.hostname) || url.username || url.password || url.port) throw new ScanError("Disallowed API destination");
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const signal = AbortSignal.timeout(2e4);
+    const service = services[url.hostname];
+    if (url.protocol !== "https:" || !service || url.username || url.password || url.port) {
+      throw new ScanError("Disallowed API destination");
+    }
+    for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+      const final = attempt === ATTEMPTS - 1;
+      const backoff = 1e3 * 2 ** attempt;
       let response;
       try {
         response = await this.fetcher(url, {
           redirect: "error",
-          signal,
+          signal: AbortSignal.timeout(2e4),
           headers: {
             Accept: "application/json",
             "User-Agent": "osm-action/0.1.0",
@@ -7421,48 +7449,80 @@ var Http = class {
           }
         });
       } catch {
-        throw new ScanError("API request failed or timed out (details redacted)");
-      }
-      const reader = response.body?.getReader();
-      const chunks = [];
-      let bytes = 0;
-      try {
-        if (reader) for (; ; ) {
-          const item = await reader.read();
-          if (item.done) break;
-          bytes += item.value.byteLength;
-          if (bytes > limit) {
-            await reader.cancel();
-            throw new ScanError("API response exceeded size limit");
-          }
-          chunks.push(item.value);
+        if (!final) {
+          await this.pause(backoff);
+          continue;
         }
+        throw new ScanError(`${service} API request failed or timed out (details redacted)`);
+      }
+      let body;
+      try {
+        body = await read(response, limit);
       } catch (error) {
         if (error instanceof ScanError) throw error;
-        throw new ScanError("API response could not be read");
-      }
-      const body = Buffer.concat(chunks).toString("utf8");
-      if ((response.status === 429 || response.status >= 500) && attempt < 2) {
-        if (response.status === 429 && /daily|24 hours|24-hour/i.test(body)) {
-          throw new ScanError("API daily quota exhausted", 429);
+        if (!final) {
+          await this.pause(backoff);
+          continue;
         }
-        const retry = response.headers.get("retry-after");
-        const numeric = retry === null ? NaN : Number(retry);
-        const ms = Number.isFinite(numeric) ? numeric * 1e3 : retry ? Date.parse(retry) - Date.now() : 1e3 * 2 ** attempt;
-        if (!Number.isFinite(ms) || ms > 6e4) throw new ScanError("API retry delay exceeds scan budget", response.status);
+        throw new ScanError(`${service} API response could not be read`);
+      }
+      const remaining = response.headers.get("x-ratelimit-remaining");
+      const retryAfter = response.headers.get("retry-after");
+      const githubLimited = service === "GitHub" && response.status === 403 && (remaining === "0" || retryAfter !== null);
+      const throttled = response.status === 429 || githubLimited;
+      if ((throttled || response.status >= 500) && !final) {
+        if (response.status === 429 && /daily|24 hours|24-hour/i.test(body)) {
+          throw new ScanError(`${service} API daily quota exhausted`, 429);
+        }
+        const ms = retryDelay(
+          retryAfter,
+          githubLimited && remaining === "0" ? response.headers.get("x-ratelimit-reset") : null,
+          // OSM documents a per-minute window without Retry-After; short waits would retry into the same window.
+          throttled ? 2e4 * 2 ** attempt : backoff
+        );
+        if (!Number.isFinite(ms) || ms > MAX_RETRY_DELAY) {
+          throw new ScanError(githubLimited ? "GitHub API rate limit exhausted; supply a GitHub token or retry later" : `${service} API retry delay exceeds scan budget`, response.status);
+        }
         await this.pause(Math.max(1e3, ms));
         continue;
       }
-      if (!response.ok) throw new ScanError(`API returned HTTP ${response.status}`, response.status);
+      if (!response.ok) {
+        const hint = statusHints[response.status];
+        throw new ScanError(`${service} API returned HTTP ${response.status}${hint ? ` (${hint})` : ""}`, response.status);
+      }
       try {
         return JSON.parse(body);
       } catch {
-        throw new ScanError("API returned invalid JSON");
+        throw new ScanError(`${service} API returned invalid JSON`);
       }
     }
-    throw new ScanError("API retries exhausted");
+    throw new ScanError(`${service} API retries exhausted`);
   }
 };
+async function read(response, limit) {
+  const reader = response.body?.getReader();
+  const chunks = [];
+  let bytes = 0;
+  if (reader) for (; ; ) {
+    const item = await reader.read();
+    if (item.done) break;
+    bytes += item.value.byteLength;
+    if (bytes > limit) {
+      await reader.cancel();
+      throw new ScanError("API response exceeded size limit");
+    }
+    chunks.push(item.value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+function retryDelay(retryAfter, resetEpoch, fallback) {
+  if (retryAfter !== null && retryAfter.trim()) {
+    const seconds = Number(retryAfter);
+    return Number.isFinite(seconds) ? seconds * 1e3 : Date.parse(retryAfter) - Date.now();
+  }
+  if (resetEpoch !== null) return Number(resetEpoch) * 1e3 - Date.now();
+  return fallback;
+}
 
 // src/source.ts
 var MAX_FILE = 512e3;
@@ -7545,7 +7605,12 @@ var GitHub = class {
         if (!object(commit.commit) || !object(commit.commit.tree) || typeof commit.commit.tree.sha !== "string" || !SHA.test(commit.commit.tree.sha)) {
           throw new ScanError("Commit has no valid tree identity");
         }
-        return { source: new GitHubSource(this, repo, sha, commit.commit.tree.sha), sha, private: meta.private };
+        return {
+          source: new GitHubSource(this, repo, sha, commit.commit.tree.sha),
+          sha,
+          private: meta.private,
+          name: repositoryName(meta.full_name)
+        };
       })();
       this.cache.set(key, result);
     }
@@ -7603,6 +7668,15 @@ var GitHubSource = class {
 };
 
 // src/osm.ts
+var UUID = /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;
+function reportUrl(value) {
+  if (typeof value !== "string" || value.length > 2048) return;
+  try {
+    const url = new URL(value);
+    if (url.protocol === "https:" && url.hostname === "opensourcemalware.com" && !url.username && !url.password && !url.port) return url.href;
+  } catch {
+  }
+}
 var OSM = class {
   constructor(token, http = new Http(), pause = sleep, intervalMs = 2100) {
     this.token = token;
@@ -7617,32 +7691,37 @@ var OSM = class {
   intervalMs;
   cache = /* @__PURE__ */ new Map();
   nextRequest = 0;
-  check(repo) {
-    repo = repository(repo);
-    let cached = this.cache.get(repo);
+  /** `name` should carry GitHub's canonical casing; deduplication is case-insensitive. */
+  check(name) {
+    name = repositoryName(name);
+    const key = repository(name);
+    let cached = this.cache.get(key);
     if (!cached) {
-      cached = this.lookup(repo);
-      this.cache.set(repo, cached);
+      cached = this.lookup(key, name);
+      this.cache.set(key, cached);
     }
     return cached;
   }
-  async lookup(repo) {
+  async lookup(key, name) {
     await this.pause(Math.max(0, this.nextRequest - Date.now()));
     this.nextRequest = Date.now() + this.intervalMs;
-    const identifier = `https://github.com/${repo}`;
+    const identifier = `https://github.com/${name}`;
     const url = new URL("https://api.opensourcemalware.com/functions/v1/check-malicious");
     url.searchParams.set("report_type", "repository");
     url.searchParams.set("resource_identifier", identifier);
     const data = await this.http.json(url, this.token);
-    if (!object(data) || typeof data.malicious !== "boolean" || data.report_type !== "repository" || typeof data.resource_identifier !== "string" || data.resource_identifier.toLowerCase().replace(/\/$/, "") !== identifier) {
+    if (!object(data) || typeof data.malicious !== "boolean" || data.report_type !== "repository" || typeof data.resource_identifier !== "string" || data.resource_identifier.toLowerCase().replace(/\/$/, "") !== identifier.toLowerCase()) {
       throw new ScanError("OSM response does not match the repository lookup contract");
     }
-    if (data.malicious && !object(data.details)) throw new ScanError("OSM flagged response has no details object");
+    const details = object(data.details) ? data.details : {};
+    const reportId = [details.threat_id, details.id].find((x) => typeof x === "string" && UUID.test(x));
+    const link = reportUrl(data.osm_url);
     return {
-      repository: repo,
+      repository: key,
       state: data.malicious ? "flagged-repository" : "no-verified-match",
       checkedAt: (/* @__PURE__ */ new Date()).toISOString(),
-      ...object(data.details) && typeof data.details.id === "string" && /^[a-f\d-]{36}$/i.test(data.details.id) ? { reportId: data.details.id } : {}
+      ...reportId ? { reportId } : {},
+      ...link ? { reportUrl: link } : {}
     };
   }
 };
@@ -7651,6 +7730,11 @@ var OSM = class {
 var import_node_crypto2 = require("node:crypto");
 var import_yaml = __toESM(require_dist(), 1);
 var defaultPolicy = { requireSha: true, failOnGaps: false, maxDepth: 10, maxAssets: 100, maxDocuments: 300 };
+var SAME_REVISION = {
+  repository: /^\$\{\{\s*github\.repository\s*\}\}$/,
+  ref: /^\$\{\{\s*(?:github\.sha|github\.event\.pull_request\.head\.sha)\s*\}\}$/
+};
+var sameRevision = (key, value) => typeof value === "string" && SAME_REVISION[key].test(value.trim());
 async function scan(root, resolver, intel, policy = defaultPolicy) {
   const report = {
     schemaVersion: 1,
@@ -7681,6 +7765,9 @@ async function scan(root, resolver, intel, policy = defaultPolicy) {
   };
   const assets = /* @__PURE__ */ new Map();
   const visibility = /* @__PURE__ */ new Map();
+  const canonical = /* @__PURE__ */ new Map();
+  const visited = /* @__PURE__ */ new Set();
+  const seen = /* @__PURE__ */ new Set();
   const contents = /* @__PURE__ */ new Map();
   let documents = 0;
   let nodes = 0;
@@ -7688,18 +7775,20 @@ async function scan(root, resolver, intel, policy = defaultPolicy) {
     if (++nodes > 3e3) throw new Error("Workflow node budget exhausted");
   };
   const add = (code, message, loc, level = "error") => {
+    const key = JSON.stringify([code, level, loc.source, loc.file, loc.line, message]);
+    if (seen.has(key)) return false;
+    seen.add(key);
     report.findings.push({ code, message, level, ...loc });
+    return true;
   };
   const incomplete = (message, loc) => {
     report.complete = false;
-    report.coverage.unresolved++;
-    add("incomplete", message, loc);
+    if (add("incomplete", message, loc)) report.coverage.unresolved++;
   };
   const gap = (message, loc) => {
-    report.coverage.gaps++;
-    add("coverage-gap", message, loc, policy.failOnGaps ? "error" : "warning");
+    if (add("coverage-gap", message, loc, policy.failOnGaps ? "error" : "warning")) report.coverage.gaps++;
   };
-  async function read(source, path) {
+  async function read2(source, path) {
     const key = `${source.id}:${path}`;
     let cached = contents.get(key);
     if (!cached) {
@@ -7760,6 +7849,7 @@ async function scan(root, resolver, intel, policy = defaultPolicy) {
       const resolved = await resolver.resolve(repo, ref);
       asset.resolvedSha = resolved.sha;
       visibility.set(repo, resolved.private);
+      canonical.set(repo, resolved.name);
       if (kind === "workflow") await visit(resolved.source, path, kind, loc.chain, stack, false);
       else await action(resolved.source, path, loc.chain, stack, workspaceKnown);
     } catch (error) {
@@ -7769,14 +7859,14 @@ async function scan(root, resolver, intel, policy = defaultPolicy) {
   async function action(source, path, chain, stack, workspaceKnown) {
     const prefix = path ? `${path}/` : "";
     for (const name of ["action.yml", "action.yaml"]) {
-      if (await read(source, prefix + name) !== void 0) {
+      if (await read2(source, prefix + name) !== void 0) {
         await visit(source, prefix + name, "action", chain, stack, workspaceKnown);
         return;
       }
     }
     for (const name of ["Dockerfile", "dockerfile"]) {
       const file = prefix + name;
-      if (await read(source, file) !== void 0) {
+      if (await read2(source, file) !== void 0) {
         gap("Dockerfile-only action contents and images are not inspected", {
           source: source.id,
           file,
@@ -7792,22 +7882,34 @@ async function scan(root, resolver, intel, policy = defaultPolicy) {
     const identity = `${source.id}:${path}`;
     const chain = [...ancestors, identity];
     const base = { source: source.id, file: path, line: 1, chain };
-    if (stack.includes(identity) || stack.length >= policy.maxDepth || ++documents > policy.maxDocuments) {
+    if (stack.includes(identity)) {
       incomplete("Dependency cycle, depth limit, or document budget reached", base);
       return;
     }
+    const visitKey = JSON.stringify([kind, workspaceKnown, identity]);
+    if (visited.has(visitKey)) return;
+    if (stack.length >= policy.maxDepth || ++documents > policy.maxDocuments) {
+      incomplete("Dependency cycle, depth limit, or document budget reached", base);
+      return;
+    }
+    visited.add(visitKey);
     const nextStack = [...stack, identity];
     try {
-      const text = await read(source, path);
+      const text = await read2(source, path);
       if (text === void 0 || Buffer.byteLength(text) > 512e3) throw new Error("Missing or oversized metadata");
       const lines = new import_yaml.LineCounter();
       const doc = (0, import_yaml.parseDocument)(text, { lineCounter: lines, uniqueKeys: true, strict: true, schema: "core" });
       if (doc.errors.length || doc.warnings.length) throw new Error("Invalid YAML");
-      const data = doc.toJS({ maxAliasCount: 0 });
+      const data = doc.toJS({ maxAliasCount: 100 });
       if (!object(data)) throw new Error("Expected YAML mapping");
       const at = (keys) => {
-        const node = doc.getIn(keys, true);
-        return { ...base, line: node?.range?.[0] === void 0 ? 1 : lines.linePos(node.range[0]).line };
+        let node = doc.contents;
+        for (const key of keys) {
+          if ((0, import_yaml.isAlias)(node)) node = node.resolve(doc);
+          node = (0, import_yaml.isCollection)(node) ? node.get(key, true) : void 0;
+        }
+        const start = node?.range?.[0];
+        return { ...base, line: start === void 0 ? 1 : lines.linePos(start).line };
       };
       async function steps(value, keys, initialWorkspace) {
         if (!Array.isArray(value)) throw new Error("Expected steps array");
@@ -7820,7 +7922,7 @@ async function scan(root, resolver, intel, policy = defaultPolicy) {
             await use(step.uses, "action", source, at([...keys, i, "uses"]), nextStack, known);
             if (typeof step.uses === "string" && /^actions\/checkout@/.test(step.uses)) {
               const inputs = step.with;
-              const defaultSource = inputs === void 0 || object(inputs) && !["repository", "ref", "path", "sparse-checkout"].some((k) => k in inputs);
+              const defaultSource = inputs === void 0 || object(inputs) && !["path", "sparse-checkout"].some((k) => k in inputs) && ["repository", "ref"].every((k) => !(k in inputs) || sameRevision(k, inputs[k]));
               const cleansWorkspace = inputs === void 0 || object(inputs) && (!("clean" in inputs) || inputs.clean === true || typeof inputs.clean === "string" && inputs.clean.trim().toLowerCase() === "true");
               known = !("if" in step) && defaultSource && cleansWorkspace;
             } else {
@@ -7879,11 +7981,11 @@ async function scan(root, resolver, intel, policy = defaultPolicy) {
       continue;
     }
     try {
-      const verdict = await intel.check(repo);
+      const verdict = await intel.check(canonical.get(repo) ?? repo);
       report.verdicts.push(verdict);
       report.coverage.checkedRepositories++;
       if (verdict.state === "flagged-repository") for (const loc of locations) {
-        add("flagged-repository", "OSM flags this repository. Applicability to the selected commit needs review; this is not a commit-level malware verdict.", loc);
+        add("flagged-repository", "OSM flags this repository. Applicability to the selected commit needs review; this is not a commit-level malware verdict." + (verdict.reportUrl ? ` OSM report: ${verdict.reportUrl}` : ""), loc);
       }
     } catch (error) {
       report.verdicts.push({ repository: repo, state: "error", checkedAt: (/* @__PURE__ */ new Date()).toISOString() });
@@ -7897,7 +7999,14 @@ async function scan(root, resolver, intel, policy = defaultPolicy) {
 
 // src/report.ts
 var html = (s) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;").replaceAll("`", "&#96;").replaceAll("|", "&#124;").replace(/[\x00-\x1f\x7f]/g, " ");
+var SUMMARY_FINDINGS = 100;
+var rank = { "flagged-repository": 0, incomplete: 1, "mutable-reference": 2, "coverage-gap": 3 };
+function prioritized(findings) {
+  return [...findings].sort((a, b) => Number(a.level !== "error") - Number(b.level !== "error") || (rank[a.code] ?? 9) - (rank[b.code] ?? 9));
+}
 function summary(report) {
+  const findings = prioritized(report.findings);
+  const flagged = report.verdicts.filter((x) => x.state === "flagged-repository");
   const lines = [
     `## OSM repository intelligence: ${report.result.toUpperCase()}`,
     "",
@@ -7906,14 +8015,21 @@ function summary(report) {
     `Checked repositories: **${report.coverage.checkedRepositories}** · Unresolved checks: **${report.coverage.unresolved}** · Coverage gaps: **${report.coverage.gaps}**`,
     "",
     "A pass means no blocking repository-intelligence findings within this scan’s scope. It does not certify code, packages, containers, or runtime behavior as safe.",
-    "",
-    "| Finding | Location | Detail |",
-    "| --- | --- | --- |"
+    ""
   ];
-  for (const finding of report.findings.slice(0, 100)) lines.push(
+  if (flagged.length) {
+    lines.push("### Flagged repositories", "", "| Repository | OSM report |", "| --- | --- |");
+    for (const verdict of flagged) lines.push(`| <code>${html(verdict.repository)}</code> | ${verdict.reportUrl ? `<a href="${html(verdict.reportUrl)}">View report</a>` : "Not provided"} |`);
+    lines.push("");
+  }
+  lines.push("| Finding | Location | Detail |", "| --- | --- | --- |");
+  for (const finding of findings.slice(0, SUMMARY_FINDINGS)) lines.push(
     `| ${html(finding.code)} | <code>${html(finding.source)}:${html(finding.file)}:${finding.line}</code> | ${html(finding.message)} |`
   );
-  if (report.findings.length > 100) lines.push("", "Additional findings are in the JSON report.");
+  if (findings.length > SUMMARY_FINDINGS) lines.push(
+    "",
+    `Showing the ${SUMMARY_FINDINGS} most severe of ${findings.length} findings. The rest are in the JSON report.`
+  );
   lines.push(
     "",
     "### Excluded from this release",
@@ -7943,8 +8059,8 @@ async function main() {
     console.log("Usage: node dist/cli.cjs [--path DIR | --repository OWNER/REPO --sha COMMIT] [--output FILE] [--format json|summary] [--allow-mutable-refs] [--fail-on-gaps]\nCredentials: OSM_API_TOKEN (required), GITHUB_TOKEN (recommended). Exit codes: 0 pass, 1 blocked, 2 incomplete/error.");
     return;
   }
-  if (!["json", "summary"].includes(values.format)) throw new Error("Invalid format");
-  if (Boolean(values.repository) !== Boolean(values.sha) || values.repository && values.path || values.sha && !SHA.test(values.sha)) throw new Error("Use --repository and a full --sha together, or --path");
+  if (!["json", "summary"].includes(values.format)) throw new ScanError("--format must be json or summary");
+  if (Boolean(values.repository) !== Boolean(values.sha) || values.repository && values.path || values.sha && !SHA.test(values.sha)) throw new ScanError("Use --repository and a full --sha together, or --path");
   const github = new GitHub(process.env.GITHUB_TOKEN ?? "");
   const osm = new OSM(process.env.OSM_API_TOKEN ?? "");
   const source = values.repository ? (await github.resolve(values.repository, values.sha)).source : new LocalSource(values.path ?? ".");
@@ -7958,7 +8074,8 @@ async function main() {
   else process.stdout.write(content);
   process.exitCode = exitCode(report);
 }
-main().catch(() => {
-  console.error("Scan could not start or write its report. Check arguments, credentials, repository access, and output path. Use --help for usage.");
+main().catch((error) => {
+  const reason = safeErrorMessage(error) ?? "Check arguments, credentials, repository access, and output path";
+  console.error(`Scan could not start or write its report: ${reason}. Use --help for usage.`);
   process.exitCode = 2;
 });

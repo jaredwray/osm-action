@@ -87,7 +87,7 @@ There is no PR-controlled policy file, arbitrary API URL, persistent verdict cac
 | `report-path` | JSON report under `RUNNER_TEMP` |
 | `checked-repositories` | Successfully checked unique public repositories |
 
-Startup errors have no outputs and exit nonzero. Findings are written before scan failure. Upload steps should use `if: always()` and check `report-path` is nonempty. Reports contain dependency identities; do not upload private inventories publicly.
+Startup errors have no outputs and exit nonzero; the error names the cause (for example a missing token, rejected credentials, or an inaccessible commit) without echoing upstream responses, paths, or credentials. Findings are written before scan failure. Upload steps should use `if: always()` and check `report-path` is nonempty. Reports contain dependency identities; do not upload private inventories publicly.
 
 ## Fork PRs and execution gates
 
@@ -118,7 +118,7 @@ Output files must not already exist. Exit **0**: no blocking repository findings
 | Remote actions/subdirectories | Resolve SHA, check public repository reputation, parse `action.yml`/`action.yaml` |
 | Composites/reusable workflows | Recursive traversal with bounded cycles/depth and dependency chains |
 | Local reusable workflows | Resolve in their owning repository and commit |
-| Step-level local actions (including `./`) | Resolve against caller workspace after unconditional default `actions/checkout` with default or literal-true cleanup; disabled/dynamic cleanup, custom checkout source/path, or intervening code make the workspace unknown |
+| Step-level local actions (including `./`) | Resolve against caller workspace after unconditional default `actions/checkout` with default or literal-true cleanup (`ref: ${{ github.sha }}`, `ref: ${{ github.event.pull_request.head.sha }}`, and `repository: ${{ github.repository }}` count as default); disabled/dynamic cleanup, other checkout sources/refs/paths, or intervening code make the workspace unknown |
 | JavaScript actions | Repository/metadata checked; code, bundles, and hooks are uninspected |
 | Containers/services/Dockerfiles | Coverage warnings; Dockerfile-only actions use the runner's `Dockerfile`/`dockerfile` fallback after metadata files; image checks not implemented |
 | Shell and runtime downloads | Coverage warnings; never executed/interpreted |
@@ -128,7 +128,7 @@ Output files must not already exist. Exit **0**: no blocking repository findings
 
 References are inspected even when workflow conditions might skip them. No expression evaluation, matrix expansion, arbitrary checkout modeling, GitHub Enterprise Server, or custom API endpoints. The root project itself is not queried with OSM; declared remote dependencies are.
 
-Limits: 100 workflow files, 100 distinct action/workflow references, 300 document visits, 3,000 job/step nodes, depth 10, 512 KB/source file, 50,000 tree entries, 8 MB/GitHub response, 2 MB/OSM response, 20 seconds/request, three attempts, and retry waits no longer than 60 seconds. Truncated Git trees, aliases, custom YAML tags, duplicate keys, unsafe paths, and symlink metadata are rejected. Set an overall job timeout.
+Limits: 100 workflow files, 100 distinct action/workflow references, 300 distinct documents (each document is traversed once per workspace state; every caller remains recorded in the asset locations), 3,000 job/step nodes, depth 10, 512 KB/source file, 50,000 tree entries, 8 MB/GitHub response, 2 MB/OSM response, 20 seconds/request, three attempts (transient network errors, 5xx responses, and GitHub/OSM rate limits are retried), and retry waits no longer than 60 seconds. YAML anchors and aliases are supported with bounded expansion. Truncated Git trees, merge keys (unsupported by GitHub), custom YAML tags, duplicate keys, unsafe paths, and symlink metadata are rejected. Set an overall job timeout.
 
 OSM's [token quotas](https://docs.opensourcemalware.com/api/rate-limits) and [IP/daily limits](https://docs.opensourcemalware.com/api/api-errors) apply across jobs. Per-run throttling cannot coordinate other runners behind a shared IP. No persistent verdict cache is used, avoiding stale negatives and cross-PR cache poisoning.
 
