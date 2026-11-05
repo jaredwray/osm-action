@@ -128,3 +128,51 @@ test('large step lists cannot expand findings without a bound', async () => {
   const { report } = await fixture({ '.github/workflows/a.yml': text }, {});
   assert.equal(report.result, 'incomplete'); assert.ok(report.findings.length <= 3001);
 });
+test('root local actions are inspected after checkout, including nested dependencies', async t => {
+  for (const name of ['action.yml', 'action.yaml']) await t.test(name, async () => {
+    const files = { '.github/workflows/ci.yml': `jobs:\n  a:\n    steps:\n      - uses: actions/checkout@${A}\n      - uses: ./\n`,
+      [name]: `runs:\n  using: composite\n  steps:\n    - uses: nested/action@${B}\n` };
+    const remotes = { 'actions/checkout': { 'action.yml': js }, 'nested/action': { 'action.yml': js } };
+    const { report, calls } = await fixture(files, remotes);
+    assert.equal(report.result, 'pass'); assert.equal(report.complete, true);
+    assert.ok(report.files.some(x => x.source === 'root' && x.path === name));
+    assert.ok(calls.includes('nested/action'));
+    const flagged = (await fixture(files, remotes, ['nested/action'])).report;
+    assert.equal(flagged.result, 'fail');
+    assert.ok(flagged.findings.some(x => x.code === 'flagged-repository' && x.chain.includes(`root:${name}`)));
+  });
+});
+test('root local action still requires a known workspace', async () => {
+  const { report } = await fixture({ '.github/workflows/ci.yml': workflow('./'), 'action.yml': js }, {});
+  assert.equal(report.result, 'incomplete');
+});
+test('checkout must prove cleanup before re-establishing local workspace contents', async t => {
+  for (const [clean, expected] of [['false', 'incomplete'], ["'false'", 'incomplete'],
+    ['${{ inputs.clean }}', 'incomplete'], ['true', 'pass'], ["'TRUE'", 'pass']] as const) {
+    await t.test(clean, async () => {
+      const files = { '.github/workflows/ci.yml': `jobs:\n  a:\n    steps:\n      - uses: actions/checkout@${A}\n      - run: echo 'untracked local/action.yml may be created here'\n      - uses: actions/checkout@${A}\n        with:\n          clean: ${clean}\n      - uses: ./local\n`,
+        'local/action.yaml': js };
+      const { report } = await fixture(files, { 'actions/checkout': { 'action.yml': js } });
+      assert.equal(report.result, expected); assert.equal(report.complete, expected === 'pass');
+      assert.equal(report.files.some(x => x.path === 'local/action.yaml'), expected === 'pass');
+    });
+  }
+});
+test('Dockerfile-only actions honor the coverage policy and still check reputation', async t => {
+  for (const name of ['Dockerfile', 'dockerfile']) await t.test(name, async () => {
+    const files = { '.github/workflows/ci.yml': workflow(`container/action/subdir@${A}`) };
+    const remotes = { 'container/action': { [`subdir/${name}`]: 'FROM scratch\n' } };
+    const { report, calls } = await fixture(files, remotes);
+    assert.equal(report.result, 'pass'); assert.equal(report.complete, true);
+    assert.deepEqual(calls, ['container/action']);
+    assert.equal(report.coverage.gaps, 1);
+    assert.ok(report.findings.some(x => x.code === 'coverage-gap' && x.file === `subdir/${name}`));
+    assert.equal((await fixture(files, remotes, [], { failOnGaps: true })).report.result, 'fail');
+    assert.equal((await fixture(files, remotes, ['container/action'])).report.result, 'fail');
+  });
+});
+test('action metadata takes precedence over a Dockerfile fallback', async () => {
+  const { report } = await fixture({ '.github/workflows/ci.yml': workflow(`container/action@${A}`) },
+    { 'container/action': { 'action.yml': 'runs: [', Dockerfile: 'FROM scratch\n' } });
+  assert.equal(report.result, 'incomplete');
+});

@@ -53,7 +53,8 @@ export async function scan(root: Source, resolver: Resolver, intel: Intelligence
     if (value.startsWith('docker://')) { gap('Container image scanning is outside this release’s scope', loc); return; }
     try {
       if (value.startsWith('./')) {
-        const path = filePath(value);
+        // ./ is a valid action directory, but never a reusable workflow file.
+        const path = kind === 'action' && value === './' ? '' : filePath(value);
         if (kind === 'workflow') {
           if (!/^\.github\/workflows\/[^/]+\.ya?ml$/.test(path)) throw new Error('Invalid local reusable workflow');
           await visit(source, path, kind, loc.chain, stack, false);
@@ -94,6 +95,16 @@ export async function scan(root: Source, resolver: Resolver, intel: Intelligence
         await visit(source, prefix + name, 'action', chain, stack, workspaceKnown); return;
       }
     }
+    // The runner supports Dockerfile-only actions after both metadata names.
+    for (const name of ['Dockerfile', 'dockerfile']) {
+      const file = prefix + name;
+      if (await read(source, file) !== undefined) {
+        gap('Dockerfile-only action contents and images are not inspected', {
+          source: source.id, file, line: 1, chain: [...chain, `${source.id}:${file}`]
+        });
+        return;
+      }
+    }
     throw new Error('Missing action metadata');
   }
   async function visit(source: Source, path: string, kind: 'action' | 'workflow',
@@ -128,7 +139,14 @@ export async function scan(root: Source, resolver: Resolver, intel: Intelligence
             await use(step.uses, 'action', source, at([...keys, i, 'uses']), nextStack, known);
             if (typeof step.uses === 'string' && /^actions\/checkout@/.test(step.uses)) {
               const inputs = step.with;
-              known = !('if' in step) && (!inputs || (object(inputs) && !['repository', 'ref', 'path', 'sparse-checkout'].some(k => k in inputs)));
+              const defaultSource = inputs === undefined || (object(inputs) &&
+                !['repository', 'ref', 'path', 'sparse-checkout'].some(k => k in inputs));
+              // Disabled or dynamic cleanup may preserve untracked action.yml
+              // files created by earlier code, overriding tracked action.yaml.
+              const cleansWorkspace = inputs === undefined || (object(inputs) &&
+                (!('clean' in inputs) || inputs.clean === true ||
+                  (typeof inputs.clean === 'string' && inputs.clean.trim().toLowerCase() === 'true')));
+              known = !('if' in step) && defaultSource && cleansWorkspace;
             } else {
               // Arbitrary third-party code can replace files in the caller workspace.
               known = false;

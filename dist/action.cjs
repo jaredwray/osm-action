@@ -7672,7 +7672,7 @@ async function scan(root, resolver, intel, policy = defaultPolicy) {
     }
     try {
       if (value.startsWith("./")) {
-        const path2 = filePath(value);
+        const path2 = kind === "action" && value === "./" ? "" : filePath(value);
         if (kind === "workflow") {
           if (!/^\.github\/workflows\/[^/]+\.ya?ml$/.test(path2)) throw new Error("Invalid local reusable workflow");
           await visit(source, path2, kind, loc.chain, stack, false);
@@ -7719,6 +7719,18 @@ async function scan(root, resolver, intel, policy = defaultPolicy) {
         return;
       }
     }
+    for (const name of ["Dockerfile", "dockerfile"]) {
+      const file = prefix + name;
+      if (await read(source, file) !== void 0) {
+        gap("Dockerfile-only action contents and images are not inspected", {
+          source: source.id,
+          file,
+          line: 1,
+          chain: [...chain, `${source.id}:${file}`]
+        });
+        return;
+      }
+    }
     throw new Error("Missing action metadata");
   }
   async function visit(source, path, kind, ancestors, stack, workspaceKnown) {
@@ -7753,7 +7765,9 @@ async function scan(root, resolver, intel, policy = defaultPolicy) {
             await use(step.uses, "action", source, at([...keys, i, "uses"]), nextStack, known);
             if (typeof step.uses === "string" && /^actions\/checkout@/.test(step.uses)) {
               const inputs = step.with;
-              known = !("if" in step) && (!inputs || object(inputs) && !["repository", "ref", "path", "sparse-checkout"].some((k) => k in inputs));
+              const defaultSource = inputs === void 0 || object(inputs) && !["repository", "ref", "path", "sparse-checkout"].some((k) => k in inputs);
+              const cleansWorkspace = inputs === void 0 || object(inputs) && (!("clean" in inputs) || inputs.clean === true || typeof inputs.clean === "string" && inputs.clean.trim().toLowerCase() === "true");
+              known = !("if" in step) && defaultSource && cleansWorkspace;
             } else {
               known = false;
             }

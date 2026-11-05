@@ -91,9 +91,9 @@ Output files must not already exist. Exit **0**: no blocking repository findings
 | Remote actions/subdirectories | Resolve SHA, check public repository reputation, parse `action.yml`/`action.yaml` |
 | Composites/reusable workflows | Recursive traversal with bounded cycles/depth and dependency chains |
 | Local reusable workflows | Resolve in their owning repository and commit |
-| Step-level local actions | Resolve against caller workspace after unconditional default `actions/checkout`; custom checkout inputs or intervening code make the workspace unknown |
+| Step-level local actions (including `./`) | Resolve against caller workspace after unconditional default `actions/checkout` with default or literal-true cleanup; disabled/dynamic cleanup, custom checkout source/path, or intervening code make the workspace unknown |
 | JavaScript actions | Repository/metadata checked; code, bundles, and hooks are uninspected |
-| Containers/services/Dockerfiles | Coverage warnings; image checks not implemented |
+| Containers/services/Dockerfiles | Coverage warnings; Dockerfile-only actions use the runner's `Dockerfile`/`dockerfile` fallback after metadata files; image checks not implemented |
 | Shell and runtime downloads | Coverage warnings; never executed/interpreted |
 | Package lockfiles/transitive packages | Out of scope; no package/version verdicts |
 | Private/inaccessible dependencies | Incomplete; private identities are not queried with OSM |
