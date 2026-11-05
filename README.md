@@ -4,6 +4,8 @@ A reusable GitHub Action and CLI that check **GitHub Actions dependency reposito
 
 **Status: initial implementation, not a stable release.** Automated tests use synthetic API responses. Authenticated OSM contract validation and GitHub-hosted smoke tests remain release requirements. This client is not affiliated with OpenSourceMalware.
 
+The scanner reads all workflow files at the specified commit and checks the public repositories behind their declared action dependencies against OSM. If your workflow uses Action A and its composite metadata calls Action B, both repositories are checked. The candidate workflows and actions are read as data, without running their code.
+
 ## Features
 
 - Resolves remote `uses:` references to commits and inspects metadata at those commits.
@@ -18,11 +20,22 @@ This is repository intelligence, not code or package malware analysis. A flagged
 
 ## GitHub Action
 
-Store your OSM token as the repository/organization secret `OSM_API_TOKEN`. Replace `PINNED_OSM_ACTION_COMMIT` with a reviewed 40-character commit SHA that includes `dist/action.cjs`. This placeholder is not a usable ref. Consumers do not install npm dependencies.
+1. Obtain an [OpenSourceMalware API token](https://docs.opensourcemalware.com/api/overview).
+2. In your repository, open **Settings → Secrets and variables → Actions**, then create a secret named `OSM_API_TOKEN`. An organization secret with access granted to the repository also works.
+3. Create `.github/workflows/osm.yml` using the example below. Change `main` if your protected branch has a different name.
+4. Replace `PINNED_OSM_ACTION_COMMIT` with a reviewed 40-character commit SHA that includes `dist/action.cjs`. This placeholder is not a usable ref; there is no stable release yet.
 
 ```yaml
+name: OSM malware check
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
   malware:
     runs-on: ubuntu-latest
@@ -40,7 +53,21 @@ jobs:
       - run: echo 'Place checkout, installs, and build steps in this gated job'
 ```
 
-Use that pattern in protected/trusted workflows. The scanner job needs no checkout and must not execute candidate code. Pin nested remote actions/workflows too. The runner must support Node 24 actions.
+Use that pattern in protected/trusted workflows. The scanner job needs no checkout or npm installation and must not execute candidate code. The runner must support Node 24 actions.
+
+Full commit pinning is enabled by default: existing references such as `actions/checkout@v6` will fail the check. Pin every remote action and reusable workflow, including nested dependencies, to a full commit SHA.
+
+To gate an existing build or release, add the `malware` job to that same workflow and set `needs: malware` on the build/release job (preserving any existing dependencies). The scan above does not stop jobs in other workflows. For pull requests from forks, use the [fork inspection template](examples/fork-pr.yml) and the setup described below.
+
+The job summary and annotations explain the result; the JSON report records dependency paths and coverage gaps.
+
+| Result | Meaning | Job outcome |
+| --- | --- | --- |
+| `pass` | All required repository checks completed with no blocking findings under the configured policy; this does not establish that the code is malware-free | Success |
+| `fail` | A repository was flagged or a policy requirement was violated | Failure |
+| `incomplete` | Required checks could not finish, for example because of an API outage or inaccessible dependency | Failure |
+
+Keep [zizmor](https://docs.zizmor.sh/) enabled for workflow security checks alongside OSM repository threat intelligence.
 
 | Input | Default | Meaning |
 | --- | --- | --- |
