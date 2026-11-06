@@ -5,3 +5,4 @@ trustPolicy: no-downgrade # fail if a later version has weaker trust evidence
 strictDepBuilds: true
 dangerouslyAllowAllBuilds: false
 allowBuilds: {}
+blockExoticSubdeps: true # transitive dependencies must come from the registry
