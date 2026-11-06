@@ -36,7 +36,7 @@ Profile: website/app · public
 - [x] `persist-credentials: false` on checkouts that don't push — verified 2026-11-05
 - [x] No `pull_request_target` on workflows that run untrusted PR code — verified 2026-11-05
 - [x] Artifact-publishing workflows disable `actions/setup-node` default caching (`package-manager-cache: false`) to prevent cache poisoning — verified 2026-11-05 (no artifact-publishing workflow)
-- [ ] No npm tokens (or other registry credentials) in Actions secrets (PR pending)
+- [ ] No npm tokens (or other registry credentials) in Actions secrets (PR #21 pending)
 
 ## 6. Security tooling
 - [x] Aikido runs on every build — verified 2026-11-05 (Aikido Security check on pull requests)
