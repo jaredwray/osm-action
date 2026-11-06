@@ -147,9 +147,11 @@ OSM's [token quotas](https://docs.opensourcemalware.com/api/rate-limits) and [IP
 ## Development and release
 
 ```sh
-npm ci --ignore-scripts
-npm run check
-npm run check:dist
+corepack enable
+corepack prepare
+pnpm install --frozen-lockfile
+pnpm run check
+pnpm run check:dist
 ```
 
 Synthetic tests cover nested findings, private repositories, parser attacks, paths, bounded HTTP behavior, error redaction, report escaping, and bundled entry points without executing malware. Commit `dist/`; CI checks that rebuilding produces no diff. MIT covers this client; see `THIRD_PARTY_NOTICES.txt` for the bundled YAML library license.
