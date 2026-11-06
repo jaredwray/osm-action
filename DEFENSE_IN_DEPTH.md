@@ -12,7 +12,7 @@ Profile: website/app · public
 
 ## 2. CODEOWNERS and cloud bootstrap
 - [x] `.github/CODEOWNERS` covers `/.github/`, `/.vscode/`, `/.cursor/`, `/.devcontainer/`, `/.claude/`, `/.codex/`, `/scripts/` with owners the maintainer names — PR #9
-- [ ] Codespaces, Cursor Cloud Agents, and Claude Code on the web bootstrap Aikido Safe Chain via scripts/setup-cloud-environment.sh (--ci shims, frozen lockfile); Claude Code runs it from `.claude/hooks/session-start.sh` (web sessions only, install log on stderr, 600s timeout) and `.gitignore` keeps `.claude/settings.json` and `.claude/hooks/` tracked — PR #16
+- [x] Codespaces, Cursor Cloud Agents, and Claude Code on the web bootstrap Aikido Safe Chain via scripts/setup-cloud-environment.sh (--ci shims, frozen lockfile); Claude Code runs it from `.claude/hooks/session-start.sh` (web sessions only, install log on stderr, 600s timeout) and `.gitignore` keeps `.claude/settings.json` and `.claude/hooks/` tracked — PR #16
 - [ ] Codex cloud environments use Manual setup with `bash ./scripts/setup-cloud-environment.sh` as the setup and maintenance script (manual)
 - [ ] Claude Code on the web environments allow `malware-list.aikido.dev` (Custom network access plus the default package-manager list) (manual)
 - [x] Dev Container `image` pinned by digest (`name:<tag>@sha256:<digest>`; not a floating tag) — verified 2026-11-06 (greenfield template digest in PR #16)
@@ -24,13 +24,13 @@ Profile: website/app · public
 - [x] Lifecycle scripts blocked: `strictDepBuilds: true`, `dangerouslyAllowAllBuilds: false`, `allowBuilds: {}` baseline — PR #13; `esbuild: false` keeps its install script off because the optional native package supplies the binary
 - [x] `blockExoticSubdeps: true` — PR #14
 - [x] Lockfile committed; CI installs with `pnpm install --frozen-lockfile` — PR #15
-- [ ] No `.github/dependabot.yml`; other dependency-update tools (if any) open PRs only — never auto-merge (PR #17 pending)
+- [x] No `.github/dependabot.yml`; other dependency-update tools (if any) open PRs only — never auto-merge — PR #17
 
 ## 4. GitHub Actions
 - [x] `permissions: contents: read` (or `{}` + per-job grants) on every workflow — verified 2026-11-05
 - [x] No `contents: write` except jobs whose purpose is mutating the repo (GitHub Release, Changesets version PR); generated output is a workflow artifact, never committed back from CI — verified 2026-11-05
 - [x] Every action pinned to a full commit SHA (`npx actions-up`) — verified 2026-11-05
-- [ ] Every job installs Socket Firewall (`SocketDev/action` SHA-pinned, `firewall-version` pinned); `pnpm install` / `npm install` run as `sfw pnpm install` / `sfw npm install`
+- [ ] Every job installs Socket Firewall (`SocketDev/action` SHA-pinned, `firewall-version` pinned); `pnpm install` / `npm install` run as `sfw pnpm install` / `sfw npm install` (PR pending)
 - [ ] `.github/workflows/check-workflows.yaml` lints workflows with zizmor on every PR
 - [ ] Workflow `name:` and job `name:` contain no spaces (kebab-case) so they can be set as required status checks
 - [x] `persist-credentials: false` on checkouts that don't push — verified 2026-11-05

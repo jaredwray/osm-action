@@ -18,6 +18,11 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+      - name: Install Socket Firewall
+        uses: SocketDev/action@ba6de6cc0565af1f42295590380973573297e31f # v1.3.2
+        with:
+          mode: firewall-free
+          firewall-version: "1.16.0"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24'
@@ -27,6 +32,6 @@ jobs:
       - run: corepack prepare
         env:
           COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
-      - run: pnpm install --frozen-lockfile
+      - run: sfw pnpm install --frozen-lockfile
       - run: pnpm run check
       - run: git diff --exit-code -- dist
