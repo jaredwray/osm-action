@@ -15,8 +15,8 @@ Profile: website/app · public
 
 ## 3. Dependencies (pnpm)
 - [x] `packageManager: pnpm@11.3+` pinned in `package.json` — PR #10
-- [ ] 7-day cooldown: `minimumReleaseAge: 10080`, `minimumReleaseAgeStrict: true`, `minimumReleaseAgeIgnoreMissingTime: false`; no first-party `minimumReleaseAgeExclude` (PR #11 pending)
-- [ ] `trustPolicy: no-downgrade`; no first-party `trustPolicyExclude`
+- [x] 7-day cooldown: `minimumReleaseAge: 10080`, `minimumReleaseAgeStrict: true`, `minimumReleaseAgeIgnoreMissingTime: false`; no first-party `minimumReleaseAgeExclude` — PR #11
+- [ ] `trustPolicy: no-downgrade`; no first-party `trustPolicyExclude` (PR #12 pending)
 - [ ] Lifecycle scripts blocked: `strictDepBuilds: true`, `dangerouslyAllowAllBuilds: false`, `allowBuilds: {}` baseline
 - [ ] `blockExoticSubdeps: true`
 - [ ] Lockfile committed; CI installs with `pnpm install --frozen-lockfile`
