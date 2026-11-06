@@ -19,7 +19,7 @@ Profile: website/app · public
 - [x] `trustPolicy: no-downgrade`; no first-party `trustPolicyExclude` — PR #12
 - [x] Lifecycle scripts blocked: `strictDepBuilds: true`, `dangerouslyAllowAllBuilds: false`, `allowBuilds: {}` baseline — PR #13; `esbuild: false` keeps its install script off because the optional native package supplies the binary
 - [x] `blockExoticSubdeps: true` — PR #14
-- [ ] Lockfile committed; CI installs with `pnpm install --frozen-lockfile` (PR pending)
+- [ ] Lockfile committed; CI installs with `pnpm install --frozen-lockfile` (PR #15 pending)
 - [ ] No `.github/dependabot.yml`; other dependency-update tools (if any) open PRs only — never auto-merge
 
 ## 4. GitHub Actions
