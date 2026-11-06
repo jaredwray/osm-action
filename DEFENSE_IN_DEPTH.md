@@ -11,10 +11,10 @@ Profile: website/app · public
 - [x] `DEFENSE_IN_DEPTH.md` present (this file) — PR #8
 
 ## 2. CODEOWNERS and cloud bootstrap
-- [ ] `.github/CODEOWNERS` covers `/.github/`, `/.vscode/`, `/.cursor/`, `/.devcontainer/`, `/.claude/`, `/.codex/`, `/scripts/` with owners the maintainer names (PR #9 pending)
+- [x] `.github/CODEOWNERS` covers `/.github/`, `/.vscode/`, `/.cursor/`, `/.devcontainer/`, `/.claude/`, `/.codex/`, `/scripts/` with owners the maintainer names — PR #9
 
 ## 3. Dependencies (pnpm)
-- [ ] `packageManager: pnpm@11.3+` pinned in `package.json`
+- [ ] `packageManager: pnpm@11.3+` pinned in `package.json` (PR #10 pending)
 - [ ] 7-day cooldown: `minimumReleaseAge: 10080`, `minimumReleaseAgeStrict: true`, `minimumReleaseAgeIgnoreMissingTime: false`; no first-party `minimumReleaseAgeExclude`
 - [ ] `trustPolicy: no-downgrade`; no first-party `trustPolicyExclude`
 - [ ] Lifecycle scripts blocked: `strictDepBuilds: true`, `dangerouslyAllowAllBuilds: false`, `allowBuilds: {}` baseline
