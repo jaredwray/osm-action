@@ -4,5 +4,6 @@ minimumReleaseAgeIgnoreMissingTime: false # missing publish-time metadata fails 
 trustPolicy: no-downgrade # fail if a later version has weaker trust evidence
 strictDepBuilds: true
 dangerouslyAllowAllBuilds: false
-allowBuilds: {}
+allowBuilds:
+  esbuild: false # native optional package supplies the binary; do not run the install script
 blockExoticSubdeps: true # transitive dependencies must come from the registry
