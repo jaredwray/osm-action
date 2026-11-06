@@ -4,7 +4,7 @@ Tracking against https://github.com/jaredwray/agentic/blob/main/skills/security/
 
 Profile: website/app · public
 
-`package.json` is `"private": true`. This repository ships a GitHub Action and is not published to npm, so § 5 is omitted. Safe Chain, Codex cloud, and Claude Code environment items are omitted because there is no `pnpm-lock.yaml`. The Dev Container image pin is omitted because there is no `devcontainer.json`.
+`package.json` is `"private": true`. This repository ships a GitHub Action and is not published to npm, so § 5 is omitted.
 
 ## 1. Security docs
 - [x] `SECURITY.md` present — contact info + "How this repository is secured" summary — PR #8
@@ -12,6 +12,10 @@ Profile: website/app · public
 
 ## 2. CODEOWNERS and cloud bootstrap
 - [x] `.github/CODEOWNERS` covers `/.github/`, `/.vscode/`, `/.cursor/`, `/.devcontainer/`, `/.claude/`, `/.codex/`, `/scripts/` with owners the maintainer names — PR #9
+- [ ] Codespaces, Cursor Cloud Agents, and Claude Code on the web bootstrap Aikido Safe Chain via scripts/setup-cloud-environment.sh (--ci shims, frozen lockfile); Claude Code runs it from `.claude/hooks/session-start.sh` (web sessions only, install log on stderr, 600s timeout) and `.gitignore` keeps `.claude/settings.json` and `.claude/hooks/` tracked (PR pending)
+- [ ] Codex cloud environments use Manual setup with `bash ./scripts/setup-cloud-environment.sh` as the setup and maintenance script (manual)
+- [ ] Claude Code on the web environments allow `malware-list.aikido.dev` (Custom network access plus the default package-manager list) (manual)
+- [x] Dev Container `image` pinned by digest (`name:<tag>@sha256:<digest>`; not a floating tag) — verified 2026-11-06 (greenfield template digest)
 
 ## 3. Dependencies (pnpm)
 - [x] `packageManager: pnpm@11.3+` pinned in `package.json` — PR #10
@@ -19,7 +23,7 @@ Profile: website/app · public
 - [x] `trustPolicy: no-downgrade`; no first-party `trustPolicyExclude` — PR #12
 - [x] Lifecycle scripts blocked: `strictDepBuilds: true`, `dangerouslyAllowAllBuilds: false`, `allowBuilds: {}` baseline — PR #13; `esbuild: false` keeps its install script off because the optional native package supplies the binary
 - [x] `blockExoticSubdeps: true` — PR #14
-- [ ] Lockfile committed; CI installs with `pnpm install --frozen-lockfile` (PR #15 pending)
+- [x] Lockfile committed; CI installs with `pnpm install --frozen-lockfile` — PR #15
 - [ ] No `.github/dependabot.yml`; other dependency-update tools (if any) open PRs only — never auto-merge
 
 ## 4. GitHub Actions
