@@ -44,6 +44,6 @@ Profile: website/app · public
 - [x] Socket reviews every PR that changes dependencies — verified 2026-11-05 (socket-security app)
 
 ## 7. Repository lockdown
-- [ ] Phishing-resistant 2FA (passkeys / hardware keys) on the GitHub and npm accounts (manual)
-- [ ] Recovery codes stored offline in a password manager (manual)
-- [ ] `lockdown-repo.sh` applied by a repo admin (never committed to this repo); `--check` with `--required-checks` and `--allowed-actions` passes (PRs required on the default branch, merges blocked unless required status checks pass, tag ruleset, immutable releases, fork-PR approval (public repos), read-only workflow tokens, Actions allowlist, secret scanning, Dependabot disabled, private vulnerability reporting (public repos))
+- [x] Phishing-resistant 2FA (passkeys / hardware keys) on the GitHub and npm accounts (manual) — verified 2026-11-07 (maintainer confirmed)
+- [x] Recovery codes stored offline in a password manager (manual) — verified 2026-11-07 (maintainer confirmed)
+- [x] `lockdown-repo.sh` applied by a repo admin (never committed to this repo); `--check` with `--required-checks` and `--allowed-actions` passes (PRs required on the default branch, merges blocked unless required status checks pass, tag ruleset, immutable releases, fork-PR approval (public repos), read-only workflow tokens, Actions allowlist, secret scanning, Dependabot disabled, private vulnerability reporting (public repos)) — verified 2026-11-07 (admin applied the script; PR #23)

@@ -22,6 +22,13 @@ We will acknowledge receipt on the issue and by email, fix it in public, and cre
 
 This repository follows the [defense-in-depth](https://github.com/jaredwray/agentic/blob/main/skills/security/defense-in-depth-nodejs/SKILL.md) hardening checklist; progress is tracked in [DEFENSE_IN_DEPTH.md](./DEFENSE_IN_DEPTH.md). Measures currently in place:
 
+- The repository blocks a direct push to the default branch.
+- The repository requires a pull request.
+- A merge requires the `verify` check and the `zizmor` check.
+- Only a repository admin can create a tag.
+- GitHub keeps a published release immutable.
+- An outside collaborator needs approval before a workflow run.
+- Only an allowlisted GitHub Action can run.
 - CI sets each workflow to `contents: read`.
 - A job gets `contents: write` only when that job changes the repository.
 - CI keeps output in a workflow artifact.
